@@ -2,7 +2,7 @@ name: Sync ipv6.m3u and Insert Custom Lines
 
 on:
   schedule:
-    - cron: "0 3 * * *" # 每天日本时间中午12点执行（UTC时间03:00）
+    - cron: '0 3 * * *'  # 每天日本时间中午12点执行（UTC时间03:00）
   workflow_dispatch:
 
 jobs:
@@ -12,7 +12,7 @@ jobs:
       - name: Checkout your repo
         uses: actions/checkout@v3
 
-      - name: Download upstream file
+      - name: Download upstream ipv6.m3u
         run: |
           curl -sL https://raw.githubusercontent.com/fanmingming/live/refs/heads/main/tv/m3u/ipv6.m3u -o ipv6.m3u
 
@@ -25,6 +25,11 @@ jobs:
           echo "$CUSTOM_LINE_1" >> generated_ipv6.m3u
           echo "$CUSTOM_LINE_2" >> generated_ipv6.m3u
           tail -n +4 ipv6.m3u >> generated_ipv6.m3u
+
+      - name: Append content from iptv.m3u (lines from 6 onward)
+        run: |
+          curl -sL https://raw.githubusercontent.com/Kimentanm/aptv/refs/heads/master/m3u/iptv.m3u -o iptv.m3u
+          tail -n +6 iptv.m3u >> generated_ipv6.m3u
 
           mkdir -p generated
           mv generated_ipv6.m3u generated/ipv6_custom.m3u
