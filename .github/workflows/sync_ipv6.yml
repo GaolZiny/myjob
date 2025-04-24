@@ -18,9 +18,9 @@ jobs:
 
       - name: Insert custom lines from local file after 2nd line
         run: |
-          head -n 2 ipv6.m3u > generated_ipv6.m3u
+          head -n 1 ipv6.m3u > generated_ipv6.m3u
           cat insert_custom_lines.txt >> generated_ipv6.m3u
-          tail -n +3 ipv6.m3u >> generated_ipv6.m3u
+          tail -n +2 ipv6.m3u >> generated_ipv6.m3u
 
       - name: Append content from iptv.m3u (lines from 6 onward)
         run: |
