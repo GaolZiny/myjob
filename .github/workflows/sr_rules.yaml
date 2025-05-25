@@ -1,0 +1,76 @@
+name: Update and Modify Shadowrocket Rules
+
+on:
+  schedule:
+    - cron: '0 12 * * *'  # 每天中午12点（UTC）
+  workflow_dispatch:
+
+jobs:
+  update-rules:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout your repo
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        pip install requests
+
+    - name: Download and modify .conf files
+      run: |
+        mkdir -p ShawrocketRule
+        cd ShawrocketRule
+
+        curl -s https://api.github.com/repos/Johnshall/Shadowrocket-ADBlock-Rules-Forever/contents/ | \
+        grep '"name":' | grep '.conf' | cut -d '"' -f4 > conf_files.txt
+
+        for file in $(cat conf_files.txt); do
+          echo "Processing $file"
+
+          # 下载
+          curl -L "https://raw.githubusercontent.com/Johnshall/Shadowrocket-ADBlock-Rules-Forever/main/$file" -o "$file"
+
+          # 精确清理 skip-proxy/bypass-tun 中的 IP
+          sed -i '/^skip-proxy =/s/192\.168\.0\.0\/16,//g' "$file"
+          sed -i '/^skip-proxy =/s/10\.0\.0\.0\/8,//g' "$file"
+          sed -i '/^bypass-tun =/s/192\.168\.0\.0\/16,//g' "$file"
+          sed -i '/^bypass-tun =/s/10\.0\.0\.0\/8,//g' "$file"
+
+          # 准备插入内容（顺序固定）
+          insert_lines=""
+          if ! grep -q 'IP-CIDR,192.168.0.0/16,DIRECT' "$file"; then
+            insert_lines="${insert_lines}IP-CIDR,192.168.0.0/16,DIRECT\n"
+          fi
+          if ! grep -q 'IP-CIDR,10.0.0.0/8,DIRECT' "$file"; then
+            insert_lines="${insert_lines}IP-CIDR,10.0.0.0/8,DIRECT\n"
+          fi
+
+          # 以下三行始终插入
+          insert_lines="${insert_lines}IP-CIDR,10.6.0.0/16,Proxy\n"
+          insert_lines="${insert_lines}IP-CIDR,192.168.8.0/24,Proxy\n"
+          insert_lines="${insert_lines}IP-CIDR,192.168.18.0/24,Proxy\n"
+
+          # 插入位置为 FINAL, 开头行的前两行
+          final_line=$(grep -n '^FINAL,' "$file" | head -n1 | cut -d':' -f1)
+          if [ ! -z "$final_line" ]; then
+            head -n $((final_line - 2)) "$file" > tmpfile
+            echo -e "$insert_lines" >> tmpfile
+            tail -n +$((final_line - 1)) "$file" >> tmpfile
+            mv tmpfile "$file"
+          fi
+        done
+
+    - name: Commit and push changes
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+        git add ShawrocketRule/*.conf
+        git commit -m "Update Shadowrocket rules with fixed order rule insertion" || echo "No changes to commit"
+        git push
