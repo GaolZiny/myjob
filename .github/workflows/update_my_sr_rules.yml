@@ -2,7 +2,7 @@ name: Update my SR Rules
 
 on:
   schedule:
-    - cron: '0 2 * * *'  # 每天日本时间中午11点执行（UTC时间02:00）
+    - cron: '0 2 * * *'  # 日本时间上午11点（UTC 02:00）
   workflow_dispatch:
 
 jobs:
@@ -71,11 +71,23 @@ jobs:
           mv "$file" "my_$file"
         done
 
+        # 自动生成 README.md
+        echo "# My Modified Shadowrocket Rules" > README.md
+        echo "" >> README.md
+        echo "以下为生成的可下载配置文件列表：" >> README.md
+        echo "" >> README.md
+
+        for f in my_*.conf; do
+          echo "- [$f](<https://raw.githubusercontent.com/${{ github.repository }}/main/sr_rules/$f>)" >> README.md
+        done
+
+        mv README.md ../sr_rules/README.md
+
     - name: Commit and push changes
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-        git add sr_rules/*.conf
-        git commit -m "Update Shadowrocket rules with fixed order rule insertion" || echo "No changes to commit"
+        git add sr_rules/*.conf sr_rules/README.md
+        git commit -m "Update Shadowrocket rules and auto-generate README" || echo "No changes to commit"
         git push
