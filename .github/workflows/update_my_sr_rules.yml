@@ -66,6 +66,9 @@ jobs:
             tail -n +$((final_line - 1)) "$file" >> tmpfile
             mv tmpfile "$file"
           fi
+
+          # 重命名为 my_ 开头的文件
+          mv "$file" "my_$file"
         done
 
     - name: Commit and push changes
