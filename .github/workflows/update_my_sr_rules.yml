@@ -24,8 +24,8 @@ jobs:
 
     - name: Download and modify .conf files
       run: |
-        mkdir -p ShawrocketRule
-        cd ShawrocketRule
+        mkdir -p sr_rules
+        cd sr_rules
 
         curl -s https://api.github.com/repos/Johnshall/Shadowrocket-ADBlock-Rules-Forever/contents/ | \
         grep '"name":' | grep '.conf' | cut -d '"' -f4 > conf_files.txt
@@ -33,10 +33,10 @@ jobs:
         for file in $(cat conf_files.txt); do
           echo "Processing $file"
 
-          # 下载
+          # 下载文件
           curl -L "https://johnshall.github.io/Shadowrocket-ADBlock-Rules-Forever/$file" -o "$file"
 
-          # 精确清理 skip-proxy/bypass-tun 中的 IP
+          # 精确清理指定字段中的 IP 段
           sed -i '/^skip-proxy =/s/192\.168\.0\.0\/16,//g' "$file"
           sed -i '/^skip-proxy =/s/10\.0\.0\.0\/8,//g' "$file"
           sed -i '/^bypass-tun =/s/192\.168\.0\.0\/16,//g' "$file"
@@ -58,7 +58,7 @@ jobs:
           insert_lines="${insert_lines}IP-CIDR,192.168.8.0/24,Proxy\n"
           insert_lines="${insert_lines}IP-CIDR,192.168.18.0/24,Proxy\n"
 
-          # 插入位置为 FINAL, 开头行的前两行
+          # 插入到 FINAL, 行的前两行位置
           final_line=$(grep -n '^FINAL,' "$file" | head -n1 | cut -d':' -f1)
           if [ ! -z "$final_line" ]; then
             head -n $((final_line - 2)) "$file" > tmpfile
