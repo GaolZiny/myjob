@@ -2,7 +2,7 @@ name: Update and Modify Shadowrocket Rules
 
 on:
   schedule:
-    - cron: '0 12 * * *'  # 每天中午12点（UTC）
+    - cron: '0 2 * * *'  # 每天日本时间中午11点执行（UTC时间02:00）
   workflow_dispatch:
 
 jobs:
