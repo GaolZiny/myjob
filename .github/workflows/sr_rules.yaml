@@ -34,7 +34,7 @@ jobs:
           echo "Processing $file"
 
           # 下载
-          curl -L "https://raw.githubusercontent.com/Johnshall/Shadowrocket-ADBlock-Rules-Forever/main/$file" -o "$file"
+          curl -L "https://johnshall.github.io/Shadowrocket-ADBlock-Rules-Forever/$file" -o "$file"
 
           # 精确清理 skip-proxy/bypass-tun 中的 IP
           sed -i '/^skip-proxy =/s/192\.168\.0\.0\/16,//g' "$file"
