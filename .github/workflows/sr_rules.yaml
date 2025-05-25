@@ -41,6 +41,8 @@ jobs:
           sed -i '/^skip-proxy =/s/10\.0\.0\.0\/8,//g' "$file"
           sed -i '/^bypass-tun =/s/192\.168\.0\.0\/16,//g' "$file"
           sed -i '/^bypass-tun =/s/10\.0\.0\.0\/8,//g' "$file"
+          sed -i '/^tun-excluded-routes =/s/192\.168\.0\.0\/16,//g' "$file"
+          sed -i '/^tun-excluded-routes =/s/10\.0\.0\.0\/8,//g' "$file"
 
           # 准备插入内容（顺序固定）
           insert_lines=""
@@ -71,6 +73,6 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-        git add ShawrocketRule/*.conf
+        git add sr_rules/*.conf
         git commit -m "Update Shadowrocket rules with fixed order rule insertion" || echo "No changes to commit"
         git push
