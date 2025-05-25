@@ -81,8 +81,6 @@ jobs:
           echo "- [$f](<https://raw.githubusercontent.com/${{ github.repository }}/main/sr_rules/$f>)" >> README.md
         done
 
-        mv README.md ../sr_rules/README.md
-
     - name: Commit and push changes
       run: |
         git config --global user.name "github-actions[bot]"
