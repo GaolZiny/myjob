@@ -1,0 +1,284 @@
+{
+  "name": "新闻AI分类与翻译工作流 (Gemini + PostgreSQL)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "定时触发器",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://feeds.bbci.co.uk/news/rss.xml",
+        "options": {}
+      },
+      "id": "rss-feed-reader",
+      "name": "读取RSS新闻源",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "extract-title",
+              "name": "title",
+              "value": "={{ $json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "extract-description",
+              "name": "description",
+              "value": "={{ $json.content || $json.contentSnippet || $json.description }}",
+              "type": "string"
+            },
+            {
+              "id": "extract-link",
+              "name": "link",
+              "value": "={{ $json.link }}",
+              "type": "string"
+            },
+            {
+              "id": "extract-pubdate",
+              "name": "pubDate",
+              "value": "={{ $json.pubDate || $json.isoDate }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-fields",
+      "name": "提取新闻字段",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as count FROM news_articles WHERE link = '{{ $json.link }}'",
+        "options": {}
+      },
+      "id": "check-duplicate-db",
+      "name": "检查重复新闻",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [900, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "id": "check-not-duplicate",
+              "leftValue": "={{ $json.count }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "filter-new-articles",
+      "name": "过滤新文章",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googlePalmApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "={{ $credentials.apiKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "contents",
+              "value": "={{ JSON.stringify([{\"parts\": [{\"text\": \"You are a news classification and summarization assistant. Analyze the following news article and provide a response in JSON format with these fields:\\n\\n- category: One of these categories in Chinese: 科技, 财经, 政治, 体育, 娱乐, 健康, 社会, 其他\\n- summary: A concise English summary (max 100 words)\\n- summary_zh: A concise Chinese translation of the summary (max 100 Chinese characters)\\n- keywords: An array of 3-5 English keywords\\n\\nNews Title: \" + $json.title + \"\\n\\nNews Content: \" + ($json.description || '').substring(0, 1000)}]}]) }}",
+              "type": "json"
+            },
+            {
+              "name": "generationConfig",
+              "value": "={{ JSON.stringify({\"temperature\": 0.3, \"maxOutputTokens\": 1000}) }}",
+              "type": "json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "gemini-classification",
+      "name": "Gemini AI分类和翻译",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 获取Gemini返回的结果\nconst geminiResponse = $input.item.json;\nlet aiResult;\n\ntry {\n  // 解析Gemini响应\n  const content = geminiResponse.candidates[0].content.parts[0].text;\n  \n  // 尝试提取JSON（Gemini可能会在Markdown代码块中返回JSON）\n  const jsonMatch = content.match(/```json\\n([\\s\\S]*?)\\n```/) || \n                    content.match(/\\{[\\s\\S]*\\}/);\n  \n  if (jsonMatch) {\n    const jsonText = jsonMatch[1] || jsonMatch[0];\n    aiResult = JSON.parse(jsonText);\n  } else {\n    aiResult = JSON.parse(content);\n  }\n} catch (error) {\n  // 如果解析失败，使用默认值\n  aiResult = {\n    category: '其他',\n    summary: $input.first().json.description?.substring(0, 200) || '',\n    summary_zh: '暂无摘要',\n    keywords: []\n  };\n}\n\n// 获取原始数据（从检查重复步骤传递过来）\nconst originalData = $input.first().json;\n\n// 构建完整的数据对象\nconst newsItem = {\n  title: originalData.title,\n  description: originalData.description,\n  link: originalData.link,\n  pubDate: originalData.pubDate,\n  category: aiResult.category || '其他',\n  summary: aiResult.summary || '',\n  summary_zh: aiResult.summary_zh || aiResult.summary || '',\n  keywords: Array.isArray(aiResult.keywords) ? aiResult.keywords.join(',') : '',\n  source: 'BBC News',\n  createdAt: new Date().toISOString()\n};\n\nreturn { json: newsItem };"
+      },
+      "id": "format-data",
+      "name": "格式化数据",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "news_articles",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "title": "={{ $json.title }}",
+            "description": "={{ $json.description }}",
+            "link": "={{ $json.link }}",
+            "pub_date": "={{ $json.pubDate }}",
+            "category": "={{ $json.category }}",
+            "summary": "={{ $json.summary }}",
+            "summary_zh": "={{ $json.summary_zh }}",
+            "keywords": "={{ $json.keywords }}",
+            "source": "={{ $json.source }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "postgres-insert",
+      "name": "保存到PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1780, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL Database"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "定时触发器": {
+      "main": [
+        [
+          {
+            "node": "读取RSS新闻源",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "读取RSS新闻源": {
+      "main": [
+        [
+          {
+            "node": "提取新闻字段",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "提取新闻字段": {
+      "main": [
+        [
+          {
+            "node": "检查重复新闻",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "检查重复新闻": {
+      "main": [
+        [
+          {
+            "node": "过滤新文章",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "过滤新文章": {
+      "main": [
+        [
+          {
+            "node": "Gemini AI分类和翻译",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini AI分类和翻译": {
+      "main": [
+        [
+          {
+            "node": "格式化数据",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "格式化数据": {
+      "main": [
+        [
+          {
+            "node": "保存到PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-11-07T00:00:00.000Z",
+  "versionId": "2"
+}
