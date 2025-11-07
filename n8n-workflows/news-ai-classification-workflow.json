@@ -69,6 +69,16 @@
     },
     {
       "parameters": {
+        "jsCode": "// 保存当前新闻数据以便后续使用\nconst newsData = {\n  title: $input.item.json.title,\n  description: $input.item.json.description,\n  link: $input.item.json.link,\n  pubDate: $input.item.json.pubDate\n};\n\n// 将数据存储到工作流静态数据中，以便后续节点访问\nreturn {\n  json: newsData\n};"
+      },
+      "id": "store-news-data",
+      "name": "保存新闻数据",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
         "operation": "executeQuery",
         "query": "SELECT CAST(COUNT(*) as integer) as count FROM news_articles WHERE link = '{{ $json.link }}'",
         "options": {}
@@ -77,13 +87,23 @@
       "name": "检查重复新闻",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
-      "position": [900, 300],
+      "position": [1120, 300],
       "credentials": {
         "postgres": {
           "id": "postgres-credentials",
           "name": "PostgreSQL Database"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 从当前节点获取count\nconst count = $input.item.json.count;\n\n// 从前一个节点获取原始新闻数据\nconst newsData = $node[\"保存新闻数据\"].json;\n\n// 合并数据\nreturn {\n  json: {\n    ...newsData,\n    count: count\n  }\n};"
+      },
+      "id": "merge-data",
+      "name": "合并数据",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
     },
     {
       "parameters": {
@@ -110,55 +130,50 @@
       "name": "过滤新文章",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1120, 300]
+      "position": [1560, 300]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "googlePalmApi",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
             {
               "name": "key",
-              "value": "={{ $credentials.apiKey }}"
+              "value": "YOUR_GEMINI_API_KEY"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         },
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "contents",
-              "value": "={{ JSON.stringify([{\"parts\": [{\"text\": \"You are a news classification and summarization assistant. Analyze the following news article and provide a response in JSON format with these fields:\\n\\n- category: One of these categories in Chinese: 科技, 财经, 政治, 体育, 娱乐, 健康, 社会, 其他\\n- summary: A concise English summary (max 100 words)\\n- summary_zh: A concise Chinese translation of the summary (max 100 Chinese characters)\\n- keywords: An array of 3-5 English keywords\\n\\nNews Title: \" + $json.title + \"\\n\\nNews Content: \" + ($json.description || '').substring(0, 1000)}]}]) }}",
-              "type": "json"
-            },
-            {
-              "name": "generationConfig",
-              "value": "={{ JSON.stringify({\"temperature\": 0.3, \"maxOutputTokens\": 1000}) }}",
-              "type": "json"
-            }
-          ]
-        },
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"You are a news classification and summarization assistant. Analyze the following news article and provide a response in JSON format with these fields:\\n\\n- category: One of these categories in Chinese: 科技, 财经, 政治, 体育, 娱乐, 健康, 社会, 其他\\n- summary: A concise English summary (max 100 words)\\n- summary_zh: A concise Chinese translation of the summary (max 100 Chinese characters)\\n- keywords: An array of 3-5 English keywords\\n\\nNews Title: {{ $json.title }}\\n\\nNews Content: {{ $json.description.substring(0, 1000) }}\"\n    }]\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.3,\n    \"maxOutputTokens\": 1000\n  }\n}",
         "options": {}
       },
       "id": "gemini-classification",
       "name": "Gemini AI分类和翻译",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [1340, 300]
+      "typeVersion": 4.2,
+      "position": [1780, 300]
     },
     {
       "parameters": {
-        "jsCode": "// 获取Gemini返回的结果\nconst geminiResponse = $input.item.json;\nlet aiResult;\n\ntry {\n  // 解析Gemini响应\n  const content = geminiResponse.candidates[0].content.parts[0].text;\n  \n  // 尝试提取JSON（Gemini可能会在Markdown代码块中返回JSON）\n  const jsonMatch = content.match(/```json\\n([\\s\\S]*?)\\n```/) || \n                    content.match(/\\{[\\s\\S]*\\}/);\n  \n  if (jsonMatch) {\n    const jsonText = jsonMatch[1] || jsonMatch[0];\n    aiResult = JSON.parse(jsonText);\n  } else {\n    aiResult = JSON.parse(content);\n  }\n} catch (error) {\n  // 如果解析失败，使用默认值\n  aiResult = {\n    category: '其他',\n    summary: $input.first().json.description?.substring(0, 200) || '',\n    summary_zh: '暂无摘要',\n    keywords: []\n  };\n}\n\n// 获取原始数据（从检查重复步骤传递过来）\nconst originalData = $input.first().json;\n\n// 构建完整的数据对象\nconst newsItem = {\n  title: originalData.title,\n  description: originalData.description,\n  link: originalData.link,\n  pubDate: originalData.pubDate,\n  category: aiResult.category || '其他',\n  summary: aiResult.summary || '',\n  summary_zh: aiResult.summary_zh || aiResult.summary || '',\n  keywords: Array.isArray(aiResult.keywords) ? aiResult.keywords.join(',') : '',\n  source: 'BBC News',\n  createdAt: new Date().toISOString()\n};\n\nreturn { json: newsItem };"
+        "jsCode": "// 获取Gemini返回的结果\nconst geminiResponse = $input.item.json;\nlet aiResult;\n\ntry {\n  // 解析Gemini响应\n  const content = geminiResponse.candidates[0].content.parts[0].text;\n  \n  // 尝试提取JSON（Gemini可能会在Markdown代码块中返回JSON）\n  const jsonMatch = content.match(/```json\\s*([\\s\\S]*?)\\s*```/) || \n                    content.match(/\\{[\\s\\S]*\\}/);\n  \n  if (jsonMatch) {\n    const jsonText = jsonMatch[1] || jsonMatch[0];\n    aiResult = JSON.parse(jsonText);\n  } else {\n    aiResult = JSON.parse(content);\n  }\n} catch (error) {\n  console.error('解析Gemini响应失败:', error);\n  // 如果解析失败，使用默认值\n  aiResult = {\n    category: '其他',\n    summary: $node[\"过滤新文章\"].json.description?.substring(0, 200) || '',\n    summary_zh: '暂无摘要',\n    keywords: []\n  };\n}\n\n// 获取原始数据\nconst originalData = $node[\"过滤新文章\"].json;\n\n// 构建完整的数据对象\nconst newsItem = {\n  title: originalData.title,\n  description: originalData.description,\n  link: originalData.link,\n  pubDate: originalData.pubDate,\n  category: aiResult.category || '其他',\n  summary: aiResult.summary || '',\n  summary_zh: aiResult.summary_zh || aiResult.summary || '',\n  keywords: Array.isArray(aiResult.keywords) ? aiResult.keywords.join(',') : '',\n  source: 'BBC News',\n  createdAt: new Date().toISOString()\n};\n\nreturn { json: newsItem };"
       },
       "id": "format-data",
       "name": "格式化数据",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1560, 300]
+      "position": [2000, 300]
     },
     {
       "parameters": {
@@ -185,7 +200,7 @@
       "name": "保存到PostgreSQL",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
-      "position": [1780, 300],
+      "position": [2220, 300],
       "credentials": {
         "postgres": {
           "id": "postgres-credentials",
@@ -221,6 +236,17 @@
       "main": [
         [
           {
+            "node": "保存新闻数据",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "保存新闻数据": {
+      "main": [
+        [
+          {
             "node": "检查重复新闻",
             "type": "main",
             "index": 0
@@ -229,6 +255,17 @@
       ]
     },
     "检查重复新闻": {
+      "main": [
+        [
+          {
+            "node": "合并数据",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "合并数据": {
       "main": [
         [
           {
@@ -281,5 +318,5 @@
   "tags": [],
   "triggerCount": 1,
   "updatedAt": "2025-11-07T00:00:00.000Z",
-  "versionId": "2"
+  "versionId": "3"
 }
