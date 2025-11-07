@@ -1,68 +1,80 @@
 -- ==========================================
--- 新闻AI分类系统数据库架构
+-- 新闻AI分类系统数据库架构 (PostgreSQL)
+-- 简化版本 - 专为微信小程序云服务设计
 -- ==========================================
 
 -- 创建数据库
-CREATE DATABASE IF NOT EXISTS news_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-USE news_db;
+-- CREATE DATABASE news_db WITH ENCODING 'UTF8';
+-- \c news_db;
 
 -- ==========================================
 -- 主表：新闻文章表
 -- ==========================================
 CREATE TABLE IF NOT EXISTS news_articles (
     -- 主键
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
 
     -- 新闻基本信息
-    title VARCHAR(500) NOT NULL COMMENT '新闻标题',
-    description TEXT COMMENT '新闻描述/内容',
-    link VARCHAR(1000) NOT NULL UNIQUE COMMENT '新闻链接（唯一）',
-    pub_date DATETIME COMMENT '发布时间',
+    title VARCHAR(500) NOT NULL,
+    description TEXT,
+    link VARCHAR(1000) NOT NULL UNIQUE,
+    pub_date TIMESTAMP,
 
     -- AI处理结果
-    category VARCHAR(50) NOT NULL DEFAULT '其他' COMMENT '新闻分类',
-    summary TEXT COMMENT 'AI生成的摘要',
-    keywords VARCHAR(500) COMMENT '关键词（逗号分隔）',
+    category VARCHAR(50) NOT NULL DEFAULT '其他',
+    summary TEXT,
+    summary_zh TEXT,  -- 中文翻译摘要
+    keywords VARCHAR(500),
 
     -- 元数据
-    source VARCHAR(200) COMMENT '新闻来源',
-    author VARCHAR(200) COMMENT '作者',
-    image_url VARCHAR(1000) COMMENT '封面图片URL',
-
-    -- 状态和统计
-    processed BOOLEAN DEFAULT TRUE COMMENT '是否已处理',
-    view_count INT DEFAULT 0 COMMENT '浏览次数',
-    like_count INT DEFAULT 0 COMMENT '点赞次数',
-    share_count INT DEFAULT 0 COMMENT '分享次数',
+    source VARCHAR(200),
+    image_url VARCHAR(1000),
 
     -- 时间戳
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-    -- 索引
-    INDEX idx_category (category),
-    INDEX idx_pub_date (pub_date),
-    INDEX idx_created_at (created_at),
-    INDEX idx_processed (processed),
-    FULLTEXT INDEX idx_keywords (keywords),
-    FULLTEXT INDEX idx_title_summary (title, summary)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='新闻文章主表';
+-- 创建索引
+CREATE INDEX idx_news_category ON news_articles(category);
+CREATE INDEX idx_news_pub_date ON news_articles(pub_date);
+CREATE INDEX idx_news_created_at ON news_articles(created_at);
+
+-- 全文搜索索引（PostgreSQL使用GIN索引）
+CREATE INDEX idx_news_fulltext ON news_articles USING gin(to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(summary_zh, '')));
+
+-- 创建注释
+COMMENT ON TABLE news_articles IS '新闻文章主表';
+COMMENT ON COLUMN news_articles.title IS '新闻标题';
+COMMENT ON COLUMN news_articles.description IS '新闻描述/内容';
+COMMENT ON COLUMN news_articles.link IS '新闻链接（唯一）';
+COMMENT ON COLUMN news_articles.pub_date IS '发布时间';
+COMMENT ON COLUMN news_articles.category IS '新闻分类';
+COMMENT ON COLUMN news_articles.summary IS 'AI生成的英文摘要';
+COMMENT ON COLUMN news_articles.summary_zh IS 'AI生成的中文摘要';
+COMMENT ON COLUMN news_articles.keywords IS '关键词（逗号分隔）';
+COMMENT ON COLUMN news_articles.source IS '新闻来源';
+COMMENT ON COLUMN news_articles.image_url IS '封面图片URL';
 
 -- ==========================================
 -- 分类表：新闻分类定义
 -- ==========================================
 CREATE TABLE IF NOT EXISTS news_categories (
-    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(50) NOT NULL UNIQUE COMMENT '分类名称',
-    name_en VARCHAR(50) COMMENT '英文名称',
-    description VARCHAR(500) COMMENT '分类描述',
-    icon VARCHAR(100) COMMENT '分类图标',
-    sort_order INT DEFAULT 0 COMMENT '排序',
-    is_active BOOLEAN DEFAULT TRUE COMMENT '是否启用',
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    name_en VARCHAR(50),
+    description VARCHAR(500),
+    icon VARCHAR(100),
+    sort_order INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='新闻分类表';
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 创建索引
+CREATE INDEX idx_categories_sort ON news_categories(sort_order);
+
+COMMENT ON TABLE news_categories IS '新闻分类表';
 
 -- 插入默认分类
 INSERT INTO news_categories (name, name_en, description, icon, sort_order) VALUES
@@ -73,125 +85,41 @@ INSERT INTO news_categories (name, name_en, description, icon, sort_order) VALUE
 ('娱乐', 'entertainment', '影视、音乐、明星等', '🎬', 5),
 ('健康', 'health', '医疗、养生、疾病等', '🏥', 6),
 ('社会', 'society', '民生、社会事件等', '👥', 7),
-('其他', 'other', '无法归类的内容', '📰', 99);
-
--- ==========================================
--- 关键词表：用于关键词统计和搜索
--- ==========================================
-CREATE TABLE IF NOT EXISTS news_keywords (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    keyword VARCHAR(100) NOT NULL COMMENT '关键词',
-    article_id BIGINT UNSIGNED NOT NULL COMMENT '文章ID',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (article_id) REFERENCES news_articles(id) ON DELETE CASCADE,
-    INDEX idx_keyword (keyword),
-    INDEX idx_article_id (article_id),
-    UNIQUE KEY unique_keyword_article (keyword, article_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='新闻关键词表';
-
--- ==========================================
--- 用户收藏表
--- ==========================================
-CREATE TABLE IF NOT EXISTS user_favorites (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    user_id BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
-    article_id BIGINT UNSIGNED NOT NULL COMMENT '文章ID',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (article_id) REFERENCES news_articles(id) ON DELETE CASCADE,
-    INDEX idx_user_id (user_id),
-    INDEX idx_article_id (article_id),
-    UNIQUE KEY unique_user_article (user_id, article_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户收藏表';
-
--- ==========================================
--- 用户阅读历史表
--- ==========================================
-CREATE TABLE IF NOT EXISTS user_reading_history (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    user_id BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
-    article_id BIGINT UNSIGNED NOT NULL COMMENT '文章ID',
-    read_duration INT DEFAULT 0 COMMENT '阅读时长（秒）',
-    read_progress INT DEFAULT 0 COMMENT '阅读进度（百分比）',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (article_id) REFERENCES news_articles(id) ON DELETE CASCADE,
-    INDEX idx_user_id (user_id),
-    INDEX idx_article_id (article_id),
-    INDEX idx_created_at (created_at),
-    UNIQUE KEY unique_user_article (user_id, article_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户阅读历史表';
+('其他', 'other', '无法归类的内容', '📰', 99)
+ON CONFLICT (name) DO NOTHING;
 
 -- ==========================================
 -- RSS源配置表
 -- ==========================================
 CREATE TABLE IF NOT EXISTS rss_sources (
-    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(200) NOT NULL COMMENT 'RSS源名称',
-    url VARCHAR(1000) NOT NULL UNIQUE COMMENT 'RSS源URL',
-    category VARCHAR(50) COMMENT '默认分类',
-    language VARCHAR(10) DEFAULT 'zh-CN' COMMENT '语言',
-    is_active BOOLEAN DEFAULT TRUE COMMENT '是否启用',
-    fetch_interval INT DEFAULT 120 COMMENT '拉取间隔（分钟）',
-    last_fetch_at DATETIME COMMENT '最后拉取时间',
-    fetch_count INT DEFAULT 0 COMMENT '拉取次数',
-    error_count INT DEFAULT 0 COMMENT '错误次数',
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    url VARCHAR(1000) NOT NULL UNIQUE,
+    category VARCHAR(50),
+    language VARCHAR(10) DEFAULT 'en',
+    is_active BOOLEAN DEFAULT TRUE,
+    fetch_interval INTEGER DEFAULT 120,
+    last_fetch_at TIMESTAMP,
+    fetch_count INTEGER DEFAULT 0,
+    error_count INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-    INDEX idx_is_active (is_active),
-    INDEX idx_last_fetch (last_fetch_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='RSS源配置表';
+-- 创建索引
+CREATE INDEX idx_rss_is_active ON rss_sources(is_active);
+CREATE INDEX idx_rss_last_fetch ON rss_sources(last_fetch_at);
 
--- 插入默认RSS源
+COMMENT ON TABLE rss_sources IS 'RSS源配置表';
+
+-- 插入默认RSS源（英文新闻源，需要翻译）
 INSERT INTO rss_sources (name, url, category, language, fetch_interval) VALUES
-('Google新闻', 'https://news.google.com/rss?hl=zh-CN&gl=CN&ceid=CN:zh-Hans', '综合', 'zh-CN', 120),
-('BBC中文', 'https://feeds.bbci.co.uk/zhongwen/simp/rss.xml', '国际', 'zh-CN', 180),
-('36氪', 'https://36kr.com/feed', '科技', 'zh-CN', 60),
-('虎嗅网', 'https://www.huxiu.com/rss/0.xml', '科技', 'zh-CN', 60);
-
--- ==========================================
--- 统计表：每日新闻统计
--- ==========================================
-CREATE TABLE IF NOT EXISTS daily_news_stats (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    stat_date DATE NOT NULL UNIQUE COMMENT '统计日期',
-    category VARCHAR(50) NOT NULL COMMENT '分类',
-    article_count INT DEFAULT 0 COMMENT '新闻数量',
-    view_count INT DEFAULT 0 COMMENT '总浏览量',
-    like_count INT DEFAULT 0 COMMENT '总点赞量',
-    share_count INT DEFAULT 0 COMMENT '总分享量',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
-    INDEX idx_stat_date (stat_date),
-    INDEX idx_category (category),
-    UNIQUE KEY unique_date_category (stat_date, category)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='每日新闻统计表';
-
--- ==========================================
--- 视图：热门新闻
--- ==========================================
-CREATE OR REPLACE VIEW hot_news AS
-SELECT
-    id,
-    title,
-    summary,
-    category,
-    link,
-    image_url,
-    view_count,
-    like_count,
-    share_count,
-    (view_count * 1 + like_count * 5 + share_count * 10) AS hot_score,
-    created_at,
-    pub_date
-FROM news_articles
-WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-ORDER BY hot_score DESC
-LIMIT 50;
+('BBC News', 'http://feeds.bbci.co.uk/news/rss.xml', '综合', 'en', 120),
+('CNN Top Stories', 'http://rss.cnn.com/rss/edition.rss', '综合', 'en', 120),
+('TechCrunch', 'https://techcrunch.com/feed/', '科技', 'en', 60),
+('The Verge', 'https://www.theverge.com/rss/index.xml', '科技', 'en', 60),
+('Reuters', 'https://www.reutersagency.com/feed/', '财经', 'en', 90)
+ON CONFLICT (url) DO NOTHING;
 
 -- ==========================================
 -- 视图：最新新闻
@@ -200,12 +128,10 @@ CREATE OR REPLACE VIEW latest_news AS
 SELECT
     id,
     title,
-    summary,
+    summary_zh as summary,
     category,
     link,
     image_url,
-    view_count,
-    like_count,
     pub_date,
     created_at
 FROM news_articles
@@ -220,51 +146,38 @@ SELECT
     c.name AS category_name,
     c.name_en,
     c.icon,
-    COUNT(a.id) AS article_count,
-    SUM(a.view_count) AS total_views,
-    SUM(a.like_count) AS total_likes
+    COUNT(a.id) AS article_count
 FROM news_categories c
 LEFT JOIN news_articles a ON c.name = a.category
 GROUP BY c.id, c.name, c.name_en, c.icon
 ORDER BY c.sort_order;
 
 -- ==========================================
--- 存储过程：更新文章浏览量
+-- 函数：更新 updated_at 时间戳
 -- ==========================================
-DELIMITER //
-CREATE PROCEDURE update_view_count(IN article_id BIGINT)
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
 BEGIN
-    UPDATE news_articles
-    SET view_count = view_count + 1
-    WHERE id = article_id;
-END //
-DELIMITER ;
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
--- ==========================================
--- 存储过程：更新文章点赞
--- ==========================================
-DELIMITER //
-CREATE PROCEDURE update_like_count(IN article_id BIGINT)
-BEGIN
-    UPDATE news_articles
-    SET like_count = like_count + 1
-    WHERE id = article_id;
-END //
-DELIMITER ;
+-- 为所有表创建触发器
+CREATE TRIGGER update_news_articles_updated_at
+    BEFORE UPDATE ON news_articles
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 
--- ==========================================
--- 触发器：新闻插入后更新统计
--- ==========================================
-DELIMITER //
-CREATE TRIGGER after_news_insert
-AFTER INSERT ON news_articles
-FOR EACH ROW
-BEGIN
-    INSERT INTO daily_news_stats (stat_date, category, article_count)
-    VALUES (DATE(NEW.created_at), NEW.category, 1)
-    ON DUPLICATE KEY UPDATE article_count = article_count + 1;
-END //
-DELIMITER ;
+CREATE TRIGGER update_news_categories_updated_at
+    BEFORE UPDATE ON news_categories
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_rss_sources_updated_at
+    BEFORE UPDATE ON rss_sources
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 
 -- ==========================================
 -- 常用查询示例
@@ -273,46 +186,33 @@ DELIMITER ;
 -- 1. 查询最新新闻（按分类）
 -- SELECT * FROM news_articles WHERE category = '科技' ORDER BY created_at DESC LIMIT 20;
 
--- 2. 全文搜索
--- SELECT * FROM news_articles WHERE MATCH(title, summary) AGAINST('人工智能' IN NATURAL LANGUAGE MODE);
+-- 2. 全文搜索（PostgreSQL）
+-- SELECT * FROM news_articles
+-- WHERE to_tsvector('simple', title || ' ' || summary_zh) @@ to_tsquery('simple', '人工智能')
+-- ORDER BY created_at DESC;
 
 -- 3. 关键词搜索
 -- SELECT * FROM news_articles WHERE keywords LIKE '%AI%' ORDER BY created_at DESC;
 
--- 4. 热门新闻
--- SELECT * FROM hot_news;
-
--- 5. 分类统计
+-- 4. 按分类统计
 -- SELECT * FROM category_stats;
 
--- 6. 用户收藏的新闻
--- SELECT a.* FROM news_articles a
--- INNER JOIN user_favorites f ON a.id = f.article_id
--- WHERE f.user_id = ? ORDER BY f.created_at DESC;
-
--- 7. 用户阅读历史
--- SELECT a.*, h.read_duration, h.read_progress, h.created_at as read_at
--- FROM news_articles a
--- INNER JOIN user_reading_history h ON a.id = h.article_id
--- WHERE h.user_id = ? ORDER BY h.created_at DESC;
-
--- 8. 清理30天前的旧新闻
--- DELETE FROM news_articles WHERE created_at < DATE_SUB(NOW(), INTERVAL 30 DAY);
+-- 5. 清理30天前的旧新闻
+-- DELETE FROM news_articles WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '30 days';
 
 -- ==========================================
 -- 性能优化建议
 -- ==========================================
 
--- 1. 定期优化表
--- OPTIMIZE TABLE news_articles;
-
--- 2. 分析表以更新统计信息
--- ANALYZE TABLE news_articles;
+-- 1. 定期清理旧数据（可以设置定时任务）
+-- 2. 使用VACUUM命令优化表
+-- VACUUM ANALYZE news_articles;
 
 -- 3. 查看表大小
 -- SELECT
---     table_name AS "表名",
---     ROUND(((data_length + index_length) / 1024 / 1024), 2) AS "大小(MB)"
--- FROM information_schema.TABLES
--- WHERE table_schema = "news_db"
--- ORDER BY (data_length + index_length) DESC;
+--     schemaname,
+--     tablename,
+--     pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size
+-- FROM pg_tables
+-- WHERE schemaname = 'public'
+-- ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
