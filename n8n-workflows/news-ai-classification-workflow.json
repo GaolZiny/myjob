@@ -70,7 +70,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT \n  CAST(COUNT(*) as integer) as count,\n  '{{ $json.title }}' as title,\n  '{{ $json.description }}' as description,\n  '{{ $json.link }}' as link,\n  '{{ $json.pubDate }}' as pubDate\nFROM news_articles \nWHERE link = '{{ $json.link }}'",
+        "query": "=SELECT CAST(COUNT(*) as integer) as count FROM news_articles WHERE link = '{{ $json.link }}'",
         "options": {}
       },
       "id": "check-duplicate-db",
@@ -84,6 +84,16 @@
           "name": "PostgreSQL Database"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 合并PostgreSQL的count和原始新闻数据\nconst count = $input.item.json.count;\nconst originalNews = $node[\"提取新闻字段\"].item.json;\n\nreturn {\n  json: {\n    title: originalNews.title,\n    description: originalNews.description,\n    link: originalNews.link,\n    pubDate: originalNews.pubDate,\n    count: count\n  }\n};"
+      },
+      "id": "merge-count-with-news",
+      "name": "合并数据",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
     },
     {
       "parameters": {
@@ -223,6 +233,17 @@
       ]
     },
     "检查重复新闻": {
+      "main": [
+        [
+          {
+            "node": "合并数据",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "合并数据": {
       "main": [
         [
           {
