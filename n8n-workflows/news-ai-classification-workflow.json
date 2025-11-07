@@ -1,0 +1,294 @@
+{
+  "name": "新闻AI分类与总结工作流",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "定时触发器",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://news.google.com/rss?hl=zh-CN&gl=CN&ceid=CN:zh-Hans",
+        "options": {}
+      },
+      "id": "rss-feed-reader",
+      "name": "读取RSS新闻源",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "extract-title",
+              "name": "title",
+              "value": "={{ $json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "extract-description",
+              "name": "description",
+              "value": "={{ $json.content }}",
+              "type": "string"
+            },
+            {
+              "id": "extract-link",
+              "name": "link",
+              "value": "={{ $json.link }}",
+              "type": "string"
+            },
+            {
+              "id": "extract-pubdate",
+              "name": "pubDate",
+              "value": "={{ $json.pubDate }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-fields",
+      "name": "提取新闻字段",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "create",
+        "modelId": "gpt-4o-mini",
+        "messages": {
+          "messageValues": [
+            {
+              "role": "system",
+              "content": "你是一个新闻分类和总结助手。请对提供的新闻进行分类，并生成简洁的摘要。\n\n分类标准：\n- 科技：科技、互联网、AI、数码产品等\n- 财经：金融、经济、股市、企业等\n- 政治：政府、政策、国际关系等\n- 体育：体育赛事、运动员等\n- 娱乐：影视、音乐、明星等\n- 健康：医疗、养生、疾病等\n- 社会：民生、社会事件等\n- 其他：无法归类的内容\n\n请以JSON格式返回，包含：category（分类）、summary（100字以内的摘要）、keywords（3-5个关键词数组）"
+            },
+            {
+              "role": "user",
+              "content": "标题：{{ $json.title }}\n\n内容：{{ $json.description }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 500
+        },
+        "responseFormat": "json_object"
+      },
+      "id": "openai-classification",
+      "name": "AI分类和总结",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.3,
+      "position": [
+        900,
+        300
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credentials",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 解析AI返回的JSON结果\nconst aiResponse = JSON.parse($input.item.json.message.content);\n\n// 构建完整的数据对象\nconst newsItem = {\n  title: $input.item.json.title,\n  description: $input.item.json.description,\n  link: $input.item.json.link,\n  pubDate: $input.item.json.pubDate,\n  category: aiResponse.category || '其他',\n  summary: aiResponse.summary || '',\n  keywords: Array.isArray(aiResponse.keywords) ? aiResponse.keywords.join(',') : '',\n  createdAt: new Date().toISOString(),\n  processed: true\n};\n\nreturn { json: newsItem };"
+      },
+      "id": "format-data",
+      "name": "格式化数据",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "news_articles",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "title": "={{ $json.title }}",
+            "description": "={{ $json.description }}",
+            "link": "={{ $json.link }}",
+            "pub_date": "={{ $json.pubDate }}",
+            "category": "={{ $json.category }}",
+            "summary": "={{ $json.summary }}",
+            "keywords": "={{ $json.keywords }}",
+            "created_at": "={{ $json.createdAt }}",
+            "processed": "={{ $json.processed }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "mysql-insert",
+      "name": "保存到MySQL数据库",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        1340,
+        300
+      ],
+      "credentials": {
+        "mySql": {
+          "id": "mysql-credentials",
+          "name": "MySQL Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "id": "check-duplicate",
+              "leftValue": "={{ $json.link }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-valid",
+      "name": "检查数据有效性",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as count FROM news_articles WHERE link = '{{ $json.link }}'",
+        "options": {}
+      },
+      "id": "check-duplicate-db",
+      "name": "检查重复新闻",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        900,
+        200
+      ],
+      "credentials": {
+        "mySql": {
+          "id": "mysql-credentials",
+          "name": "MySQL Database"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "定时触发器": {
+      "main": [
+        [
+          {
+            "node": "读取RSS新闻源",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "读取RSS新闻源": {
+      "main": [
+        [
+          {
+            "node": "提取新闻字段",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "提取新闻字段": {
+      "main": [
+        [
+          {
+            "node": "检查重复新闻",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "检查重复新闻": {
+      "main": [
+        [
+          {
+            "node": "AI分类和总结",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI分类和总结": {
+      "main": [
+        [
+          {
+            "node": "格式化数据",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "格式化数据": {
+      "main": [
+        [
+          {
+            "node": "保存到MySQL数据库",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-11-07T00:00:00.000Z",
+  "versionId": "1"
+}
