@@ -87,7 +87,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// 合并PostgreSQL的count和原始新闻数据\nconst count = $input.item.json.count;\nconst originalNews = $node[\"提取新闻字段\"].item.json;\n\nreturn {\n  json: {\n    title: originalNews.title,\n    description: originalNews.description,\n    link: originalNews.link,\n    pubDate: originalNews.pubDate,\n    count: count\n  }\n};"
+        "jsCode": "// 合并PostgreSQL的count和原始新闻数据\nconst count = $input.item.json.count;\nconst originalNews = $node[\"提取新闻字段\"].json;\n\nreturn {\n  json: {\n    title: originalNews.title,\n    description: originalNews.description,\n    link: originalNews.link,\n    pubDate: originalNews.pubDate,\n    count: count\n  }\n};"
       },
       "id": "merge-count-with-news",
       "name": "合并数据",
