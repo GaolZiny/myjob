@@ -69,41 +69,21 @@
     },
     {
       "parameters": {
-        "jsCode": "const newsData = {\n  title: $input.item.json.title,\n  description: $input.item.json.description,\n  link: $input.item.json.link,\n  pubDate: $input.item.json.pubDate\n};\n\nreturn { json: newsData };"
-      },
-      "id": "store-news-data",
-      "name": "保存新闻数据",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [900, 300]
-    },
-    {
-      "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT CAST(COUNT(*) as integer) as count FROM news_articles WHERE link = '{{ $json.link }}'",
+        "query": "SELECT \n  CAST(COUNT(*) as integer) as count,\n  '{{ $json.title }}' as title,\n  '{{ $json.description }}' as description,\n  '{{ $json.link }}' as link,\n  '{{ $json.pubDate }}' as pubDate\nFROM news_articles \nWHERE link = '{{ $json.link }}'",
         "options": {}
       },
       "id": "check-duplicate-db",
       "name": "检查重复新闻",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
-      "position": [1120, 300],
+      "position": [900, 300],
       "credentials": {
         "postgres": {
           "id": "postgres-credentials",
           "name": "PostgreSQL Database"
         }
       }
-    },
-    {
-      "parameters": {
-        "jsCode": "const count = $input.item.json.count;\nconst newsData = $node[\"保存新闻数据\"].json;\n\nreturn {\n  json: {\n    ...newsData,\n    count: count\n  }\n};"
-      },
-      "id": "merge-data",
-      "name": "合并数据",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1340, 300]
     },
     {
       "parameters": {
@@ -235,17 +215,6 @@
       "main": [
         [
           {
-            "node": "保存新闻数据",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "保存新闻数据": {
-      "main": [
-        [
-          {
             "node": "检查重复新闻",
             "type": "main",
             "index": 0
@@ -254,17 +223,6 @@
       ]
     },
     "检查重复新闻": {
-      "main": [
-        [
-          {
-            "node": "合并数据",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "合并数据": {
       "main": [
         [
           {
