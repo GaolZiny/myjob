@@ -136,7 +136,7 @@
       "parameters": {
         "resource": "text",
         "operation": "message",
-        "modelId": "models/gemini-2.5-flash",
+        "modelId": "gemini-2.5-flash",
         "prompt": "=You are a news classification and summarization assistant. Analyze the following news article and provide a response in JSON format with these fields:\n\n- category: One of these categories in Chinese: 科技, 财经, 政治, 体育, 娱乐, 健康, 社会, 其他\n- summary: A concise English summary (max 100 words)\n- summary_zh: A concise Chinese translation of the summary (max 100 Chinese characters)\n- keywords: An array of 3-5 English keywords\n\nNews Title: {{ $json.title }}\n\nNews Content: {{ $json.description ? $json.description.substring(0, 1000) : '' }}\n\nReturn ONLY the JSON object, no other text.",
         "options": {
           "temperature": 0.3,
