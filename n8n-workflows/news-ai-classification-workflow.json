@@ -69,7 +69,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// 保存当前新闻数据以便后续使用\nconst newsData = {\n  title: $input.item.json.title,\n  description: $input.item.json.description,\n  link: $input.item.json.link,\n  pubDate: $input.item.json.pubDate\n};\n\n// 将数据存储到工作流静态数据中，以便后续节点访问\nreturn {\n  json: newsData\n};"
+        "jsCode": "// 保存当前新闻数据以便后续使用\nconst newsData = {\n  title: $input.item.json.title,\n  description: $input.item.json.description,\n  link: $input.item.json.link,\n  pubDate: $input.item.json.pubDate\n};\n\nreturn {\n  json: newsData\n};"
       },
       "id": "store-news-data",
       "name": "保存新闻数据",
@@ -134,40 +134,28 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "key",
-              "value": "YOUR_GEMINI_API_KEY"
-            }
-          ]
+        "model": "gemini-2.0-flash-exp",
+        "options": {
+          "temperature": 0.3,
+          "maxOutputTokens": 1000
         },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"You are a news classification and summarization assistant. Analyze the following news article and provide a response in JSON format with these fields:\\n\\n- category: One of these categories in Chinese: 科技, 财经, 政治, 体育, 娱乐, 健康, 社会, 其他\\n- summary: A concise English summary (max 100 words)\\n- summary_zh: A concise Chinese translation of the summary (max 100 Chinese characters)\\n- keywords: An array of 3-5 English keywords\\n\\nNews Title: {{ $json.title }}\\n\\nNews Content: {{ $json.description.substring(0, 1000) }}\"\n    }]\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.3,\n    \"maxOutputTokens\": 1000\n  }\n}",
-        "options": {}
+        "text": "=You are a news classification and summarization assistant. Analyze the following news article and provide a response in JSON format with these fields:\n\n- category: One of these categories in Chinese: 科技, 财经, 政治, 体育, 娱乐, 健康, 社会, 其他\n- summary: A concise English summary (max 100 words)\n- summary_zh: A concise Chinese translation of the summary (max 100 Chinese characters)\n- keywords: An array of 3-5 English keywords\n\nNews Title: {{ $json.title }}\n\nNews Content: {{ $json.description ? $json.description.substring(0, 1000) : '' }}\n\nPlease return ONLY the JSON object, no other text."
       },
       "id": "gemini-classification",
       "name": "Gemini AI分类和翻译",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1780, 300]
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [1780, 300],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "google-gemini-api",
+          "name": "Google Gemini API"
+        }
+      }
     },
     {
       "parameters": {
-        "jsCode": "// 获取Gemini返回的结果\nconst geminiResponse = $input.item.json;\nlet aiResult;\n\ntry {\n  // 解析Gemini响应\n  const content = geminiResponse.candidates[0].content.parts[0].text;\n  \n  // 尝试提取JSON（Gemini可能会在Markdown代码块中返回JSON）\n  const jsonMatch = content.match(/```json\\s*([\\s\\S]*?)\\s*```/) || \n                    content.match(/\\{[\\s\\S]*\\}/);\n  \n  if (jsonMatch) {\n    const jsonText = jsonMatch[1] || jsonMatch[0];\n    aiResult = JSON.parse(jsonText);\n  } else {\n    aiResult = JSON.parse(content);\n  }\n} catch (error) {\n  console.error('解析Gemini响应失败:', error);\n  // 如果解析失败，使用默认值\n  aiResult = {\n    category: '其他',\n    summary: $node[\"过滤新文章\"].json.description?.substring(0, 200) || '',\n    summary_zh: '暂无摘要',\n    keywords: []\n  };\n}\n\n// 获取原始数据\nconst originalData = $node[\"过滤新文章\"].json;\n\n// 构建完整的数据对象\nconst newsItem = {\n  title: originalData.title,\n  description: originalData.description,\n  link: originalData.link,\n  pubDate: originalData.pubDate,\n  category: aiResult.category || '其他',\n  summary: aiResult.summary || '',\n  summary_zh: aiResult.summary_zh || aiResult.summary || '',\n  keywords: Array.isArray(aiResult.keywords) ? aiResult.keywords.join(',') : '',\n  source: 'BBC News',\n  createdAt: new Date().toISOString()\n};\n\nreturn { json: newsItem };"
+        "jsCode": "// 获取Gemini返回的结果\nconst geminiText = $input.item.json.output || $input.item.json.text || '';\nlet aiResult;\n\ntry {\n  // 尝试提取JSON（Gemini可能会在Markdown代码块中返回JSON）\n  const jsonMatch = geminiText.match(/```json\\s*([\\s\\S]*?)\\s*```/) || \n                    geminiText.match(/\\{[\\s\\S]*\\}/);\n  \n  if (jsonMatch) {\n    const jsonText = jsonMatch[1] || jsonMatch[0];\n    aiResult = JSON.parse(jsonText);\n  } else {\n    aiResult = JSON.parse(geminiText);\n  }\n} catch (error) {\n  console.error('解析Gemini响应失败:', error);\n  console.error('原始响应:', geminiText);\n  // 如果解析失败，使用默认值\n  aiResult = {\n    category: '其他',\n    summary: $node[\"过滤新文章\"].json.description?.substring(0, 200) || '',\n    summary_zh: '暂无摘要',\n    keywords: []\n  };\n}\n\n// 获取原始数据\nconst originalData = $node[\"过滤新文章\"].json;\n\n// 构建完整的数据对象\nconst newsItem = {\n  title: originalData.title || '',\n  description: originalData.description || '',\n  link: originalData.link || '',\n  pubDate: originalData.pubDate || new Date().toISOString(),\n  category: aiResult.category || '其他',\n  summary: aiResult.summary || '',\n  summary_zh: aiResult.summary_zh || aiResult.summary || '',\n  keywords: Array.isArray(aiResult.keywords) ? aiResult.keywords.join(',') : '',\n  source: 'BBC News',\n  createdAt: new Date().toISOString()\n};\n\nreturn { json: newsItem };"
       },
       "id": "format-data",
       "name": "格式化数据",
@@ -318,5 +306,5 @@
   "tags": [],
   "triggerCount": 1,
   "updatedAt": "2025-11-07T00:00:00.000Z",
-  "versionId": "3"
+  "versionId": "4"
 }
