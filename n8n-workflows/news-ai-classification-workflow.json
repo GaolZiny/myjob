@@ -134,20 +134,29 @@
     },
     {
       "parameters": {
-        "resource": "text",
-        "operation": "message",
-        "modelId": "gemini-2.5-flash",
-        "prompt": "=You are a news classification and summarization assistant. Analyze the following news article and provide a response in JSON format with these fields:\n\n- category: One of these categories in Chinese: 科技, 财经, 政治, 体育, 娱乐, 健康, 社会, 其他\n- summary: A concise English summary (max 100 words)\n- summary_zh: A concise Chinese translation of the summary (max 100 Chinese characters)\n- keywords: An array of 3-5 English keywords\n\nNews Title: {{ $json.title }}\n\nNews Content: {{ $json.description ? $json.description.substring(0, 1000) : '' }}\n\nReturn ONLY the JSON object, no other text.",
+        "promptType": "define",
+        "text": "=You are a news classification and summarization assistant. Analyze the following news article and provide a response in JSON format with these fields:\n\n- category: One of these categories in Chinese: 科技, 财经, 政治, 体育, 娱乐, 健康, 社会, 其他\n- summary: A concise English summary (max 100 words)\n- summary_zh: A concise Chinese translation of the summary (max 100 Chinese characters)\n- keywords: An array of 3-5 English keywords\n\nNews Title: {{ $json.title }}\n\nNews Content: {{ $json.description ? $json.description.substring(0, 1000) : '' }}\n\nReturn ONLY the JSON object, no other text.",
+        "hasOutputParser": false
+      },
+      "id": "gemini-classification",
+      "name": "Gemini AI分类和翻译",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
         "options": {
           "temperature": 0.3,
           "maxOutputTokens": 1000
         }
       },
-      "id": "gemini-classification",
-      "name": "Gemini AI分类和翻译",
-      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "id": "gemini-chat-model",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
-      "position": [1780, 300],
+      "position": [1780, 450],
       "credentials": {
         "googlePalmApi": {
           "id": "google-gemini-api",
@@ -157,7 +166,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const geminiText = $input.item.json.text || $input.item.json.response || '';\nlet aiResult;\n\ntry {\n  const jsonMatch = geminiText.match(/```json\\s*([\\s\\S]*?)\\s*```/) || \n                    geminiText.match(/\\{[\\s\\S]*\\}/);\n  \n  if (jsonMatch) {\n    const jsonText = jsonMatch[1] || jsonMatch[0];\n    aiResult = JSON.parse(jsonText);\n  } else {\n    aiResult = JSON.parse(geminiText);\n  }\n} catch (error) {\n  console.error('解析Gemini响应失败:', error);\n  console.error('原始响应:', geminiText);\n  aiResult = {\n    category: '其他',\n    summary: $node[\"过滤新文章\"].json.description?.substring(0, 200) || '',\n    summary_zh: '暂无摘要',\n    keywords: []\n  };\n}\n\nconst originalData = $node[\"过滤新文章\"].json;\n\nconst newsItem = {\n  title: originalData.title || '',\n  description: originalData.description || '',\n  link: originalData.link || '',\n  pubDate: originalData.pubDate || new Date().toISOString(),\n  category: aiResult.category || '其他',\n  summary: aiResult.summary || '',\n  summary_zh: aiResult.summary_zh || aiResult.summary || '',\n  keywords: Array.isArray(aiResult.keywords) ? aiResult.keywords.join(',') : '',\n  source: 'BBC News',\n  createdAt: new Date().toISOString()\n};\n\nreturn { json: newsItem };"
+        "jsCode": "// Get the output from Basic LLM Chain (可能是 output, text, 或 response)\nconst geminiText = $input.item.json.output || $input.item.json.text || $input.item.json.response || '';\nlet aiResult;\n\ntry {\n  // Try to extract JSON from markdown code blocks or find raw JSON\n  const jsonMatch = geminiText.match(/```json\\s*([\\s\\S]*?)\\s*```/) || \n                    geminiText.match(/\\{[\\s\\S]*\\}/);\n  \n  if (jsonMatch) {\n    const jsonText = jsonMatch[1] || jsonMatch[0];\n    aiResult = JSON.parse(jsonText);\n  } else {\n    aiResult = JSON.parse(geminiText);\n  }\n} catch (error) {\n  console.error('解析Gemini响应失败:', error);\n  console.error('原始响应:', geminiText);\n  aiResult = {\n    category: '其他',\n    summary: $node[\"过滤新文章\"].json.description?.substring(0, 200) || '',\n    summary_zh: '暂无摘要',\n    keywords: []\n  };\n}\n\nconst originalData = $node[\"过滤新文章\"].json;\n\nconst newsItem = {\n  title: originalData.title || '',\n  description: originalData.description || '',\n  link: originalData.link || '',\n  pubDate: originalData.pubDate || new Date().toISOString(),\n  category: aiResult.category || '其他',\n  summary: aiResult.summary || '',\n  summary_zh: aiResult.summary_zh || aiResult.summary || '',\n  keywords: Array.isArray(aiResult.keywords) ? aiResult.keywords.join(',') : '',\n  source: 'BBC News',\n  createdAt: new Date().toISOString()\n};\n\nreturn { json: newsItem };"
       },
       "id": "format-data",
       "name": "格式化数据",
@@ -283,6 +292,15 @@
           {
             "node": "格式化数据",
             "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "ai_languageModel": [
+        [
+          {
+            "node": "Google Gemini Chat Model",
+            "type": "ai_languageModel",
             "index": 0
           }
         ]
