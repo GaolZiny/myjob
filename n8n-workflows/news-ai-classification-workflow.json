@@ -168,23 +168,18 @@
     },
     {
       "parameters": {
-        "operation": "insert",
-        "schema": "public",
-        "table": "news_articles",
-        "columns": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "title": "={{ $json.title }}",
-            "description": "={{ $json.description }}",
-            "link": "={{ $json.link }}",
-            "pub_date": "={{ $json.pubDate }}",
-            "category": "={{ $json.category }}",
-            "summary": "={{ $json.summary }}",
-            "summary_zh": "={{ $json.summary_zh }}",
-            "keywords": "={{ $json.keywords }}",
-            "source": "={{ $json.source }}"
-          }
-        },
+        "jsCode": "// 转义SQL字符串中的单引号\nfunction escapeSql(str) {\n  if (!str) return 'NULL';\n  return \"'\" + String(str).replace(/'/g, \"''\") + \"'\";\n}\n\nconst sql = `\nINSERT INTO news_articles (title, description, link, pub_date, category, summary, summary_zh, keywords, source)\nVALUES (\n  ${escapeSql($input.item.json.title)},\n  ${escapeSql($input.item.json.description)},\n  ${escapeSql($input.item.json.link)},\n  ${escapeSql($input.item.json.pubDate)},\n  ${escapeSql($input.item.json.category)},\n  ${escapeSql($input.item.json.summary)},\n  ${escapeSql($input.item.json.summary_zh)},\n  ${escapeSql($input.item.json.keywords)},\n  ${escapeSql($input.item.json.source)}\n)\nON CONFLICT (link) DO NOTHING\nRETURNING id\n`;\n\nreturn { json: { query: sql } };"
+      },
+      "id": "prepare-insert-query",
+      "name": "准备INSERT语句",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2110, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}",
         "options": {}
       },
       "id": "postgres-insert",
@@ -293,6 +288,17 @@
       ]
     },
     "格式化数据": {
+      "main": [
+        [
+          {
+            "node": "准备INSERT语句",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "准备INSERT语句": {
       "main": [
         [
           {
