@@ -148,11 +148,34 @@ class NewsAPI {
     }
 
     /**
-     * 获取分类列表
+     * 获取分类列表（带文章数量统计）
      */
     static async getCategories() {
         const sql = `
-            SELECT * FROM category_stats
+            SELECT
+                category,
+                COUNT(*) as article_count
+            FROM news_articles
+            GROUP BY category
+            ORDER BY article_count DESC
+        `;
+
+        const result = await pool.query(sql);
+        return result.rows;
+    }
+
+    /**
+     * 获取来源列表（带文章数量统计）
+     */
+    static async getSources() {
+        const sql = `
+            SELECT
+                source,
+                COUNT(*) as article_count,
+                MAX(created_at) as latest_article_at
+            FROM news_articles
+            WHERE source IS NOT NULL
+            GROUP BY source
             ORDER BY article_count DESC
         `;
 
@@ -168,7 +191,8 @@ class NewsAPI {
             SELECT
                 (SELECT COUNT(*) FROM news_articles) as total_articles,
                 (SELECT COUNT(*) FROM news_articles WHERE DATE(created_at) = CURRENT_DATE) as today_articles,
-                (SELECT COUNT(DISTINCT category) FROM news_articles) as total_categories
+                (SELECT COUNT(DISTINCT category) FROM news_articles) as total_categories,
+                (SELECT COUNT(DISTINCT source) FROM news_articles WHERE source IS NOT NULL) as total_sources
         `;
 
         const result = await pool.query(sql);
@@ -241,6 +265,17 @@ app.get('/api/categories', async (req, res) => {
         res.json({ success: true, data });
     } catch (error) {
         console.error('Error fetching categories:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 获取来源列表
+app.get('/api/sources', async (req, res) => {
+    try {
+        const data = await NewsAPI.getSources();
+        res.json({ success: true, data });
+    } catch (error) {
+        console.error('Error fetching sources:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
