@@ -5,6 +5,11 @@ on:
     branches:
       - main
       - master
+    paths:
+      - 'n8n-workflows/server.js'
+      - 'n8n-workflows/package.json'
+      - 'n8n-workflows/Dockerfile'
+      - 'n8n-workflows/.dockerignore'
     tags:
       - 'v*'
   workflow_dispatch:
