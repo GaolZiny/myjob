@@ -40,12 +40,6 @@
               "type": "string"
             },
             {
-              "id": "extract-description",
-              "name": "description",
-              "value": "={{ $json.content || $json.contentSnippet || $json.description }}",
-              "type": "string"
-            },
-            {
               "id": "extract-link",
               "name": "link",
               "value": "={{ $json.link }}",
@@ -127,7 +121,7 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "=You are a news classification and summarization assistant. Analyze the following news article and provide a response in JSON format with these fields:\n\n- category: One of these categories in Chinese: 科技, 财经, 政治, 体育, 娱乐, 健康, 社会, 其他\n- summary: A concise English summary (max 100 words)\n- summary_zh: A concise Chinese translation of the summary (max 100 Chinese characters)\n- keywords: An array of 3-5 English keywords\n\nNews Title: {{ $json.title }}\n\nNews Content: {{ $json.description ? $json.description.substring(0, 1000) : '' }}\n\nReturn ONLY the JSON object, no other text.",
+        "text": "=You are a news classification and translation assistant. Analyze the following news article and provide a response in JSON format with these fields:\n\n- category: One of these categories in Chinese: 科技, 财经, 政治, 体育, 娱乐, 健康, 社会, 其他\n- title_zh: Translate the title to Chinese (max 100 Chinese characters)\n- summary_zh: A concise Chinese summary (max 200 Chinese characters)\n- keywords: An array of 3-5 English keywords\n\nNews Title: {{ $json.title }}\n\nReturn ONLY the JSON object, no other text.",
         "hasOutputParser": false
       },
       "id": "gemini-classification",
@@ -158,7 +152,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Get the output from Basic LLM Chain (可能是 output, text, 或 response)\nconst geminiText = $input.item.json.output || $input.item.json.text || $input.item.json.response || '';\nlet aiResult;\n\ntry {\n  // Try to extract JSON from markdown code blocks or find raw JSON\n  const jsonMatch = geminiText.match(/```json\\s*([\\s\\S]*?)\\s*```/) || \n                    geminiText.match(/\\{[\\s\\S]*\\}/);\n  \n  if (jsonMatch) {\n    const jsonText = jsonMatch[1] || jsonMatch[0];\n    aiResult = JSON.parse(jsonText);\n  } else {\n    aiResult = JSON.parse(geminiText);\n  }\n} catch (error) {\n  console.error('解析Gemini响应失败:', error);\n  console.error('原始响应:', geminiText);\n  aiResult = {\n    category: '其他',\n    summary: $node[\"过滤新文章\"].json.description?.substring(0, 200) || '',\n    summary_zh: '暂无摘要',\n    keywords: []\n  };\n}\n\nconst originalData = $node[\"过滤新文章\"].json;\n\nconst newsItem = {\n  title: originalData.title || '',\n  description: originalData.description || '',\n  link: originalData.link || '',\n  pubDate: originalData.pubDate || new Date().toISOString(),\n  category: aiResult.category || '其他',\n  summary: aiResult.summary || '',\n  summary_zh: aiResult.summary_zh || aiResult.summary || '',\n  keywords: Array.isArray(aiResult.keywords) ? aiResult.keywords.join(',') : '',\n  source: 'BBC News',\n  createdAt: new Date().toISOString()\n};\n\nreturn { json: newsItem };"
+        "jsCode": "// Get the output from Basic LLM Chain (可能是 output, text, 或 response)\nconst geminiText = $input.item.json.output || $input.item.json.text || $input.item.json.response || '';\nlet aiResult;\n\ntry {\n  // Try to extract JSON from markdown code blocks or find raw JSON\n  const jsonMatch = geminiText.match(/```json\\s*([\\s\\S]*?)\\s*```/) || \n                    geminiText.match(/\\{[\\s\\S]*\\}/);\n  \n  if (jsonMatch) {\n    const jsonText = jsonMatch[1] || jsonMatch[0];\n    aiResult = JSON.parse(jsonText);\n  } else {\n    aiResult = JSON.parse(geminiText);\n  }\n} catch (error) {\n  console.error('解析Gemini响应失败:', error);\n  console.error('原始响应:', geminiText);\n  aiResult = {\n    category: '其他',\n    title_zh: '标题翻译失败',\n    summary_zh: '暂无摘要',\n    keywords: []\n  };\n}\n\nconst originalData = $node[\"过滤新文章\"].json;\n\nconst newsItem = {\n  title: originalData.title || '',\n  title_zh: aiResult.title_zh || '',\n  link: originalData.link || '',\n  pubDate: originalData.pubDate || new Date().toISOString(),\n  category: aiResult.category || '其他',\n  summary_zh: aiResult.summary_zh || '',\n  keywords: Array.isArray(aiResult.keywords) ? aiResult.keywords.join(',') : '',\n  source: 'BBC News'\n};\n\nreturn { json: newsItem };"
       },
       "id": "format-data",
       "name": "格式化数据",
@@ -168,23 +162,18 @@
     },
     {
       "parameters": {
-        "operation": "insert",
-        "schema": "public",
-        "table": "news_articles",
-        "columns": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "title": "={{ $json.title }}",
-            "description": "={{ $json.description }}",
-            "link": "={{ $json.link }}",
-            "pub_date": "={{ $json.pubDate }}",
-            "category": "={{ $json.category }}",
-            "summary": "={{ $json.summary }}",
-            "summary_zh": "={{ $json.summary_zh }}",
-            "keywords": "={{ $json.keywords }}",
-            "source": "={{ $json.source }}"
-          }
-        },
+        "jsCode": "// 转义SQL字符串中的单引号\nfunction escapeSql(str) {\n  if (!str) return 'NULL';\n  return \"'\" + String(str).replace(/'/g, \"''\") + \"'\";\n}\n\nconst sql = `\nINSERT INTO news_articles (title, title_zh, link, pub_date, category, summary_zh, keywords, source)\nVALUES (\n  ${escapeSql($input.item.json.title)},\n  ${escapeSql($input.item.json.title_zh)},\n  ${escapeSql($input.item.json.link)},\n  ${escapeSql($input.item.json.pubDate)},\n  ${escapeSql($input.item.json.category)},\n  ${escapeSql($input.item.json.summary_zh)},\n  ${escapeSql($input.item.json.keywords)},\n  ${escapeSql($input.item.json.source)}\n)\nON CONFLICT (link) DO NOTHING\nRETURNING id\n`;\n\nreturn { json: { query: sql } };"
+      },
+      "id": "prepare-insert-query",
+      "name": "准备INSERT语句",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2110, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}",
         "options": {}
       },
       "id": "postgres-insert",
@@ -293,6 +282,17 @@
       ]
     },
     "格式化数据": {
+      "main": [
+        [
+          {
+            "node": "准备INSERT语句",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "准备INSERT语句": {
       "main": [
         [
           {
