@@ -16,14 +16,13 @@ CREATE TABLE IF NOT EXISTS news_articles (
 
     -- 新闻基本信息
     title VARCHAR(500) NOT NULL,
-    description TEXT,
+    title_zh VARCHAR(500),  -- 中文翻译标题
     link VARCHAR(1000) NOT NULL UNIQUE,
     pub_date TIMESTAMP,
 
     -- AI处理结果
     category VARCHAR(50) NOT NULL DEFAULT '其他',
-    summary TEXT,
-    summary_zh TEXT,  -- 中文翻译摘要
+    summary_zh TEXT,  -- 中文摘要
     keywords VARCHAR(500),
 
     -- 元数据
@@ -41,16 +40,15 @@ CREATE INDEX idx_news_pub_date ON news_articles(pub_date);
 CREATE INDEX idx_news_created_at ON news_articles(created_at);
 
 -- 全文搜索索引（PostgreSQL使用GIN索引）
-CREATE INDEX idx_news_fulltext ON news_articles USING gin(to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(summary_zh, '')));
+CREATE INDEX idx_news_fulltext ON news_articles USING gin(to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(title_zh, '') || ' ' || coalesce(summary_zh, '')));
 
 -- 创建注释
 COMMENT ON TABLE news_articles IS '新闻文章主表';
-COMMENT ON COLUMN news_articles.title IS '新闻标题';
-COMMENT ON COLUMN news_articles.description IS '新闻描述/内容';
+COMMENT ON COLUMN news_articles.title IS '新闻标题（英文）';
+COMMENT ON COLUMN news_articles.title_zh IS 'AI翻译的中文标题';
 COMMENT ON COLUMN news_articles.link IS '新闻链接（唯一）';
 COMMENT ON COLUMN news_articles.pub_date IS '发布时间';
 COMMENT ON COLUMN news_articles.category IS '新闻分类';
-COMMENT ON COLUMN news_articles.summary IS 'AI生成的英文摘要';
 COMMENT ON COLUMN news_articles.summary_zh IS 'AI生成的中文摘要';
 COMMENT ON COLUMN news_articles.keywords IS '关键词（逗号分隔）';
 COMMENT ON COLUMN news_articles.source IS '新闻来源';

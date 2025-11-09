@@ -33,7 +33,7 @@ class NewsAPI {
 
         let sql = `
             SELECT
-                id, title, summary_zh as summary, category, link, image_url,
+                id, title, title_zh, summary_zh, category, link, image_url,
                 pub_date, created_at
             FROM news_articles
             WHERE 1=1
@@ -86,12 +86,13 @@ class NewsAPI {
 
         const sql = `
             SELECT
-                id, title, summary_zh as summary, category, link, image_url,
+                id, title, title_zh, summary_zh, category, link, image_url,
                 pub_date, created_at
             FROM news_articles
-            WHERE to_tsvector('simple', title || ' ' || coalesce(summary_zh, '')) @@ to_tsquery('simple', $1)
+            WHERE to_tsvector('simple', title || ' ' || coalesce(title_zh, '') || ' ' || coalesce(summary_zh, '')) @@ to_tsquery('simple', $1)
                OR keywords ILIKE $2
                OR title ILIKE $2
+               OR title_zh ILIKE $2
             ORDER BY created_at DESC
             LIMIT $3 OFFSET $4
         `;
@@ -103,9 +104,10 @@ class NewsAPI {
         const countSql = `
             SELECT COUNT(*) as total
             FROM news_articles
-            WHERE to_tsvector('simple', title || ' ' || coalesce(summary_zh, '')) @@ to_tsquery('simple', $1)
+            WHERE to_tsvector('simple', title || ' ' || coalesce(title_zh, '') || ' ' || coalesce(summary_zh, '')) @@ to_tsquery('simple', $1)
                OR keywords ILIKE $2
                OR title ILIKE $2
+               OR title_zh ILIKE $2
         `;
 
         const countResult = await pool.query(countSql, [keyword, keywordPattern]);
@@ -129,7 +131,7 @@ class NewsAPI {
     static async getNewsDetail(id) {
         const sql = `
             SELECT
-                id, title, description, summary, summary_zh, category, link, image_url,
+                id, title, title_zh, summary_zh, category, link, image_url,
                 keywords, source,
                 pub_date, created_at, updated_at
             FROM news_articles
