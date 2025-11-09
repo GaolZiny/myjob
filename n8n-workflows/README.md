@@ -115,7 +115,113 @@ n8n-workflows/
 1. **n8n** - 工作流自动化平台
 2. **PostgreSQL 12+** - 数据库
 3. **Google Gemini API Key** - AI服务（免费）
-4. **Node.js 18+** - API服务
+4. **Node.js 18+** 或 **Docker** - API服务
+
+## 使用Docker镜像快速部署 🐳
+
+**推荐方式**：直接拉取GitHub自动构建的Docker镜像，无需手动编译！
+
+### 1. 拉取镜像
+
+```bash
+docker pull ghcr.io/gaolziny/myjob/news-api:latest
+```
+
+### 2. 运行容器
+
+```bash
+docker run -d \
+  --name news-api \
+  -p 3000:3000 \
+  -e DB_HOST=your_db_host \
+  -e DB_PORT=5432 \
+  -e DB_USER=postgres \
+  -e DB_PASSWORD=your_password \
+  -e DB_NAME=news_db \
+  ghcr.io/gaolziny/myjob/news-api:latest
+```
+
+### 3. 验证运行
+
+```bash
+# 检查容器状态
+docker ps
+
+# 测试API
+curl http://localhost:3000/health
+curl http://localhost:3000/api/news/latest
+```
+
+### 4. 查看日志
+
+```bash
+docker logs -f news-api
+```
+
+### Docker Compose 部署（推荐）
+
+使用Docker Compose一键部署完整环境（PostgreSQL + API）：
+
+```yaml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: news-postgres
+    environment:
+      POSTGRES_DB: news_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: your_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database-schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: ghcr.io/gaolziny/myjob/news-api:latest
+    container_name: news-api
+    ports:
+      - "3000:3000"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: your_password
+      DB_NAME: news_db
+      PORT: 3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+```
+
+保存为 `docker-compose.yml`，然后运行：
+
+```bash
+docker-compose up -d
+```
+
+### 镜像标签说明
+
+- `latest` - 最新稳定版本（推荐）
+- `main` / `master` - 主分支最新构建
+- `v1.0.0` - 特定版本号
+
+查看所有可用标签：https://github.com/GaolZiny/myjob/pkgs/container/myjob%2Fnews-api
+
+## 从源码安装
+
+如果你需要修改代码或自定义功能：
 
 ### 快速安装
 
@@ -445,7 +551,9 @@ const newsItem = {
 
 ## 部署建议
 
-### 1. 使用Docker部署
+### 1. 使用Docker部署（完整环境）
+
+使用官方镜像一键部署 PostgreSQL + n8n + API 完整环境：
 
 ```yaml
 version: '3.8'
@@ -453,33 +561,101 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15
+    container_name: news-postgres
     environment:
       POSTGRES_DB: news_db
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: your_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database-schema.sql:/docker-entrypoint-initdb.d/schema.sql
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   n8n:
-    image: n8nio/n8n
+    image: n8nio/n8n:latest
+    container_name: news-n8n
     ports:
       - "5678:5678"
     environment:
-      - DB_TYPE=postgresdb
-      - DB_POSTGRESDB_HOST=postgres
-      - DB_POSTGRESDB_PORT=5432
-      - DB_POSTGRESDB_DATABASE=news_db
-      - DB_POSTGRESDB_USER=postgres
-      - DB_POSTGRESDB_PASSWORD=your_password
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=your_n8n_password
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
   api:
-    build: .
+    image: ghcr.io/gaolziny/myjob/news-api:latest
+    container_name: news-api
+    ports:
+      - "3000:3000"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: your_password
+      DB_NAME: news_db
+      PORT: 3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  n8n_data:
+```
+
+启动命令：
+
+```bash
+# 启动所有服务
+docker-compose up -d
+
+# 查看运行状态
+docker-compose ps
+
+# 查看日志
+docker-compose logs -f
+
+# 停止服务
+docker-compose down
+
+# 停止并删除数据
+docker-compose down -v
+```
+
+访问服务：
+- **n8n界面**：http://localhost:5678 (用户名: admin, 密码: your_n8n_password)
+- **API服务**：http://localhost:3000
+- **健康检查**：http://localhost:3000/health
+
+### 2. 从源码构建（开发环境）
+
+如果需要修改代码：
+
+```yaml
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ./n8n-workflows
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
@@ -490,20 +666,35 @@ services:
       - DB_PASSWORD=your_password
     depends_on:
       - postgres
-
-volumes:
-  postgres_data:
-  n8n_data:
 ```
 
-### 2. 云服务部署
+### 3. 云服务部署
 
 推荐使用：
 - **数据库**：腾讯云PostgreSQL、阿里云RDS
 - **服务器**：腾讯云CVM、阿里云ECS
 - **容器**：腾讯云TKE、阿里云ACK
 
-### 3. 微信小程序云开发
+**使用Docker镜像部署到云服务器**：
+
+```bash
+# 在云服务器上拉取镜像
+docker pull ghcr.io/gaolziny/myjob/news-api:latest
+
+# 运行容器（连接云数据库）
+docker run -d \
+  --name news-api \
+  -p 3000:3000 \
+  -e DB_HOST=your-rds-host.aliyuncs.com \
+  -e DB_PORT=5432 \
+  -e DB_USER=postgres \
+  -e DB_PASSWORD=your_password \
+  -e DB_NAME=news_db \
+  --restart unless-stopped \
+  ghcr.io/gaolziny/myjob/news-api:latest
+```
+
+### 4. 微信小程序云开发
 
 可以将API部署到微信云开发的云函数中。
 
