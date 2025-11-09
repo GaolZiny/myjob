@@ -2,6 +2,19 @@
 
 本指南将帮助你在15分钟内搭建完整的新闻AI翻译系统，专为**微信小程序**设计。
 
+## 项目文件
+
+确认你已下载以下文件：
+
+| 文件 | 说明 | 必需 |
+|------|------|------|
+| `server.js` | Express API服务器 | ✅ 是 |
+| `news-ai-classification-workflow.json` | n8n工作流配置 | ✅ 是 |
+| `database-schema.sql` | 数据库表结构 | ✅ 是 |
+| `package.json` | Node.js依赖配置 | ✅ 是 |
+| `.env.example` | 环境变量模板 | ✅ 是 |
+| `Dockerfile` | Docker部署配置 | ⚪ 可选 |
+
 ## 系统要求
 
 - Node.js 18+ 或 Docker

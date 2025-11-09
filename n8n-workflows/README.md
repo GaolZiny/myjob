@@ -84,6 +84,28 @@
 
 **注意**：分类在Gemini提示词中定义，不需要数据库表管理。
 
+## 项目文件
+
+```
+n8n-workflows/
+├── news-ai-classification-workflow.json  # n8n工作流配置文件
+├── database-schema.sql                   # PostgreSQL数据库架构
+├── server.js                             # Express API服务器（主程序）
+├── package.json                          # Node.js依赖和脚本
+├── .env.example                          # 环境变量模板
+├── Dockerfile                            # Docker镜像配置
+├── .dockerignore                         # Docker忽略文件
+├── .gitignore                            # Git忽略文件
+├── README.md                             # 项目文档（本文件）
+├── QUICKSTART.md                         # 快速开始指南
+└── TROUBLESHOOTING.md                    # 故障排查指南
+```
+
+**核心文件说明**：
+- **server.js** - 完整的REST API服务器，提供新闻数据接口
+- **news-ai-classification-workflow.json** - n8n工作流，自动拉取、分类、翻译新闻
+- **database-schema.sql** - 数据库表结构（仅1个表：news_articles）
+
 ## 快速开始
 
 详细安装步骤请参考 [QUICKSTART.md](./QUICKSTART.md)
