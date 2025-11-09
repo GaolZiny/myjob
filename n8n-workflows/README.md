@@ -1,22 +1,23 @@
 # n8n 新闻AI分类与翻译工作流
 
-这是一个专为**微信小程序云服务**设计的自动化新闻处理工作流，可以从国外新闻源拉取英文新闻，通过Google Gemini AI进行分类和翻译成中文，然后保存到PostgreSQL数据库供小程序调用。
+这是一个专为**微信小程序云服务**设计的自动化新闻处理工作流，可以从国外新闻源拉取英文新闻，通过Google Gemini AI进行分类、标题翻译和摘要生成，然后保存到PostgreSQL数据库供小程序调用。
 
 ## 功能特性
 
 - **自动拉取新闻**：每2小时自动从RSS源拉取最新英文新闻
-- **AI智能分类**：使用Google Gemini模型对新闻进行智能分类（科技、财经、政治、体育、娱乐、健康、社会等）
-- **中文翻译**：自动将英文摘要翻译成中文，适合中国用户阅读
+- **AI智能分类**：使用Google Gemini 2.5模型对新闻进行智能分类（科技、财经、政治、体育、娱乐、健康、社会等）
+- **中文标题翻译**：自动将英文标题翻译成中文
+- **中文摘要生成**：AI生成简洁的中文摘要
 - **关键词提取**：提取3-5个英文关键词便于检索
-- **去重处理**：自动检查并避免重复保存相同新闻
-- **PostgreSQL存储**：使用PostgreSQL数据库，性能优异
+- **去重处理**：使用ON CONFLICT自动跳过重复新闻
+- **PostgreSQL存储**：极简数据库设计（仅1个表）
 - **简化API**：提供简洁的REST API供微信小程序调用
 
 ## 技术栈
 
 - **n8n**：工作流自动化平台
-- **Google Gemini Pro**：AI模型（免费配额丰富）
-- **PostgreSQL**：关系型数据库
+- **Google Gemini 2.5 Flash**：最新AI模型（免费配额丰富）
+- **PostgreSQL 12+**：关系型数据库
 - **Node.js + Express**：API服务
 - **RSS Feed**：新闻源（BBC、CNN、TechCrunch等）
 
@@ -27,39 +28,46 @@
 - 可根据需求调整触发频率
 
 ### 2. 读取RSS新闻源 (RSS Feed Reader)
-- 默认使用BBC新闻RSS源
-- 可配置多个英文新闻源：
-  - BBC News: `http://feeds.bbci.co.uk/news/rss.xml`
-  - CNN: `http://rss.cnn.com/rss/edition.rss`
-  - TechCrunch: `https://techcrunch.com/feed/`
-  - The Verge: `https://www.theverge.com/rss/index.xml`
-  - Reuters: `https://www.reutersagency.com/feed/`
+- 默认使用BBC新闻RSS源: `http://feeds.bbci.co.uk/news/rss.xml`
+- 可配置多个英文新闻源（直接在workflow中添加节点）
 
 ### 3. 提取新闻字段 (Extract Fields)
-- 提取标题、描述、链接、发布日期等关键信息
+- 提取标题、链接、发布日期等关键信息
+- **注意**：不再提取description字段
 
 ### 4. 检查重复新闻 (Check Duplicate)
-- 查询PostgreSQL数据库判断新闻是否已存在
-- 避免重复处理相同内容
+- 查询PostgreSQL数据库判断链接是否已存在
+- 返回count值（0或1）
 
-### 5. 过滤新文章 (Filter New Articles)
-- 只处理不重复的新文章
+### 5. 合并数据 (Merge)
+- 使用Merge节点按位置合并原始数据和count结果
+- 保证多条新闻正确配对
 
-### 6. Gemini AI分类和翻译 (Gemini Classification)
-- 使用Google Gemini Pro模型进行智能分析
+### 6. 过滤新文章 (Filter New Articles)
+- 只处理count=0的新文章
+
+### 7. Gemini AI分类和翻译
+- **Basic LLM Chain节点** + **Google Gemini Chat Model子节点**
+- 使用 `gemini-2.5-flash` 模型
 - 返回JSON格式数据：
-  - `category`: 新闻分类（中文）
-  - `summary`: 英文摘要
-  - `summary_zh`: 中文翻译摘要
+  - `category`: 新闻分类（中文：科技/财经/政治/体育/娱乐/健康/社会/其他）
+  - `title_zh`: 中文翻译的标题
+  - `summary_zh`: 中文摘要
   - `keywords`: 英文关键词数组
 
-### 7. 格式化数据 (Format Data)
-- 将Gemini返回结果与原始数据合并
-- 添加时间戳等元数据
+### 8. 格式化数据 (Format Data)
+- 解析Gemini的JSON响应
+- 合并原始数据（title, link, pubDate）和AI结果
+- 设置source字段（如'BBC News'）
 
-### 8. 保存到PostgreSQL (Save to Database)
-- 将处理后的数据保存到数据库
-- 供微信小程序API调用
+### 9. 准备INSERT语句 (Prepare INSERT Query)
+- 使用Code节点安全转义SQL字符串
+- 构建带 `ON CONFLICT (link) DO NOTHING` 的INSERT语句
+- 防止SQL注入和重复key错误
+
+### 10. 保存到PostgreSQL (Save to Database)
+- 执行INSERT语句
+- 重复新闻自动跳过
 
 ## 新闻分类标准
 
@@ -73,6 +81,8 @@
 | 健康 | 医疗、养生、疾病等 |
 | 社会 | 民生、社会事件等 |
 | 其他 | 无法归类的内容 |
+
+**注意**：分类在Gemini提示词中定义，不需要数据库表管理。
 
 ## 快速开始
 
@@ -112,23 +122,59 @@ npm start
 
 ## 数据库架构
 
-简化的数据库设计，专注于新闻数据：
+**极简设计** - 只有1个表！
 
-### 主表
+### news_articles 表
 
-1. **news_articles** - 新闻文章表
-   - 包含标题、描述、链接、分类、摘要（英文和中文）、关键词等
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGSERIAL | 主键（自动递增） |
+| title | VARCHAR(500) | 英文原标题 |
+| title_zh | VARCHAR(500) | AI翻译的中文标题 |
+| link | VARCHAR(1000) | 新闻链接（UNIQUE） |
+| pub_date | TIMESTAMP | 发布时间 |
+| category | VARCHAR(50) | 分类（中文） |
+| summary_zh | TEXT | 中文摘要 |
+| keywords | VARCHAR(500) | 关键词（逗号分隔） |
+| source | VARCHAR(200) | 来源（在workflow中设置） |
+| image_url | VARCHAR(1000) | 图片URL |
+| created_at | TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | 更新时间 |
 
-2. **news_categories** - 分类定义表
-   - 8个预定义分类及其描述
+**索引**：
+- `idx_news_category` - 分类查询
+- `idx_news_source` - 来源查询
+- `idx_news_pub_date` - 发布时间排序
+- `idx_news_created_at` - 创建时间排序
+- `idx_news_fulltext` - 全文搜索（GIN索引）
 
-3. **rss_sources** - RSS源配置表
-   - 管理多个新闻源
+**删除的表**：
+- ~~news_categories~~ - 分类固定，在代码中管理
+- ~~rss_sources~~ - RSS源在workflow中管理，不需要数据库
 
-### 视图
+## 如何添加新的RSS源
 
-- **latest_news** - 最新新闻（自动返回中文摘要）
-- **category_stats** - 分类统计
+**直接在n8n workflow中操作**，无需修改数据库：
+
+1. 复制现有的"读取RSS新闻源"节点
+2. 修改URL为新的RSS源（如TechCrunch）
+3. 在"格式化数据"节点中设置对应的source名称
+
+示例：
+```javascript
+// 格式化数据节点
+const newsItem = {
+  // ... 其他字段
+  source: 'TechCrunch'  // 修改这里即可
+};
+```
+
+**推荐RSS源**：
+- BBC News: `http://feeds.bbci.co.uk/news/rss.xml`
+- CNN: `http://rss.cnn.com/rss/edition.rss`
+- TechCrunch: `https://techcrunch.com/feed/`
+- The Verge: `https://www.theverge.com/rss/index.xml`
+- Reuters: `https://www.reutersagency.com/feed/`
 
 ## API接口
 
@@ -146,10 +192,14 @@ GET /api/news/latest?page=1&pageSize=20&category=科技
     {
       "id": 1,
       "title": "AI Breakthrough in 2025",
-      "summary": "人工智能在2025年取得重大突破...",
+      "title_zh": "2025年人工智能取得重大突破",
+      "summary_zh": "人工智能在2025年取得重大突破...",
       "category": "科技",
+      "keywords": "AI,technology,breakthrough",
+      "source": "BBC News",
       "link": "https://...",
-      "pub_date": "2025-11-07T10:00:00Z"
+      "pub_date": "2025-11-07T10:00:00Z",
+      "created_at": "2025-11-07T10:05:00Z"
     }
   ],
   "pagination": {
@@ -167,6 +217,8 @@ GET /api/news/latest?page=1&pageSize=20&category=科技
 GET /api/news/search?keyword=AI&page=1&pageSize=20
 ```
 
+全文搜索支持：英文标题、中文标题、中文摘要
+
 ### 3. 获取新闻详情
 
 ```http
@@ -179,10 +231,60 @@ GET /api/news/:id
 GET /api/categories
 ```
 
-### 5. 获取统计数据
+响应：
+```json
+{
+  "success": true,
+  "data": [
+    { "category": "科技", "article_count": 150 },
+    { "category": "财经", "article_count": 120 },
+    { "category": "政治", "article_count": 80 }
+  ]
+}
+```
+
+### 5. 获取来源列表
+
+```http
+GET /api/sources
+```
+
+响应：
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "source": "BBC News",
+      "article_count": 200,
+      "latest_article_at": "2025-11-09T12:00:00Z"
+    },
+    {
+      "source": "TechCrunch",
+      "article_count": 150,
+      "latest_article_at": "2025-11-09T11:30:00Z"
+    }
+  ]
+}
+```
+
+### 6. 获取统计数据
 
 ```http
 GET /api/statistics
+```
+
+响应：
+```json
+{
+  "success": true,
+  "data": {
+    "total_articles": 500,
+    "today_articles": 50,
+    "total_categories": 8,
+    "total_sources": 5
+  }
+}
 ```
 
 ## 微信小程序集成
@@ -235,13 +337,13 @@ Page({
 ```xml
 <view class="news-container">
   <view class="category-tabs">
-    <block wx:for="{{categories}}" wx:key="name">
-      <view class="tab {{category === item.name ? 'active' : ''}}"
-            bindtap="onCategoryChange"
-            data-category="{{item.name}}">
-        {{item.icon}} {{item.name}}
-      </view>
-    </block>
+    <view wx:for="{{['科技','财经','政治','体育','娱乐','健康','社会']}}"
+          wx:key="*this"
+          class="tab {{category === item ? 'active' : ''}}"
+          bindtap="onCategoryChange"
+          data-category="{{item}}">
+      {{item}}
+    </view>
   </view>
 
   <view class="news-list">
@@ -249,10 +351,11 @@ Page({
       <view class="news-item" bindtap="onNewsClick" data-id="{{item.id}}">
         <image class="news-image" src="{{item.image_url}}" mode="aspectFill"></image>
         <view class="news-content">
-          <view class="news-title">{{item.title}}</view>
-          <view class="news-summary">{{item.summary}}</view>
+          <view class="news-title-zh">{{item.title_zh}}</view>
+          <view class="news-summary">{{item.summary_zh}}</view>
           <view class="news-meta">
             <text class="category">{{item.category}}</text>
+            <text class="source">{{item.source}}</text>
             <text class="time">{{item.pub_date}}</text>
           </view>
         </view>
@@ -266,14 +369,15 @@ Page({
 
 ### 获取API Key
 
-1. 访问 [Google AI Studio](https://makersuite.google.com/app/apikey)
+1. 访问 [Google AI Studio](https://aistudio.google.com/apikey)
 2. 登录Google账号
-3. 点击 "Get API Key"
-4. 复制API密钥
+3. 点击 "Create API Key"
+4. 复制API密钥并在n8n中配置
 
 ### 优势
 
-- **免费配额丰富**：每分钟60次请求
+- **免费配额丰富**：每分钟15次请求，每天1500次
+- **最新模型**：Gemini 2.5 Flash（2025年最新版）
 - **多语言支持**：原生支持翻译
 - **高质量输出**：与GPT-4相当
 - **低延迟**：响应速度快
@@ -296,20 +400,26 @@ Page({
    - User: postgres
    - Password: your_password
 
-2. **Gemini API凭证**
-   - 在HTTP Request节点中配置API Key
-   - 或使用n8n的Google PaLM凭证
+2. **Google Gemini API凭证**
+   - 凭证类型：Google PaLM API
+   - API Key: 从Google AI Studio获取
 
-### RSS源推荐
+### workflow中的source管理
 
-英文新闻源（自动翻译成中文）：
-- BBC News（综合）
-- CNN（综合）
-- TechCrunch（科技）
-- The Verge（科技）
-- Reuters（财经）
-- ESPN（体育）
-- Variety（娱乐）
+在"格式化数据"Code节点中设置source：
+
+```javascript
+const newsItem = {
+  title: originalData.title || '',
+  title_zh: aiResult.title_zh || '',
+  link: originalData.link || '',
+  pubDate: originalData.pubDate || new Date().toISOString(),
+  category: aiResult.category || '其他',
+  summary_zh: aiResult.summary_zh || '',
+  keywords: Array.isArray(aiResult.keywords) ? aiResult.keywords.join(',') : '',
+  source: 'BBC News'  // 在这里修改source名称
+};
+```
 
 ## 部署建议
 
@@ -356,7 +466,6 @@ services:
       - DB_NAME=news_db
       - DB_USER=postgres
       - DB_PASSWORD=your_password
-      - GEMINI_API_KEY=your_gemini_key
     depends_on:
       - postgres
 
@@ -380,10 +489,15 @@ volumes:
 
 1. **数据库索引**：已创建必要的索引
 2. **定期清理**：定期删除30天前的旧新闻
+   ```sql
+   DELETE FROM news_articles WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '30 days';
+   ```
 3. **缓存策略**：可以添加Redis缓存热门新闻
 4. **CDN加速**：图片等静态资源使用CDN
 
 ## 故障排除
+
+详细的故障排除指南请参考 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)
 
 ### 常见问题
 
@@ -391,6 +505,7 @@ volumes:
    - 检查API Key是否正确
    - 检查网络连接（可能需要代理）
    - 检查配额是否用完
+   - 确认使用正确的节点类型（Basic LLM Chain + Gemini Chat Model）
 
 2. **PostgreSQL连接失败**
    - 验证数据库凭证
@@ -402,10 +517,13 @@ volumes:
    - 配置代理
    - 检查网络连接
 
-4. **翻译质量不佳**
-   - 调整Gemini的temperature参数
-   - 优化提示词
-   - 增加上下文长度
+4. **多条新闻变成1条**
+   - 检查Merge节点配置（使用Combine by Position）
+   - 不要使用Code节点引用之前的数据
+
+5. **重复key错误**
+   - 已使用ON CONFLICT处理，不应出现
+   - 检查"准备INSERT语句"节点是否正确
 
 ## 扩展功能
 
@@ -415,14 +533,14 @@ volumes:
 ### 2. 添加推送通知
 重要新闻推送到微信小程序订阅消息
 
-### 3. 添加用户偏好
-根据用户阅读历史推荐相关新闻
+### 3. 多RSS源并行处理
+复制workflow节点，同时抓取多个RSS源
 
 ### 4. 多语言支持
-支持翻译成其他语言（日语、韩语等）
+修改Gemini提示词，支持翻译成其他语言（日语、韩语等）
 
 ### 5. 情感分析
-分析新闻情感（正面/负面/中性）
+在Gemini提示词中添加情感分析要求
 
 ## 许可证
 

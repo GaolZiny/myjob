@@ -14,16 +14,17 @@
 
 ### 免费获取
 
-1. 访问 [Google AI Studio](https://makersuite.google.com/app/apikey)
+1. 访问 [Google AI Studio](https://aistudio.google.com/apikey)
 2. 使用Google账号登录
-3. 点击 "Get API Key" 或 "Create API Key"
+3. 点击 "Create API Key"
 4. 复制API密钥并保存
 
 **优势：**
 - 完全免费（有配额）
-- 每分钟60次请求
+- 每分钟15次请求，每天1500次
 - 支持多语言翻译
 - 质量与GPT-4相当
+- 使用最新的Gemini 2.5 Flash模型
 
 ---
 
@@ -83,8 +84,15 @@ psql -U postgres -d news_db -f database-schema.sql
 
 验证：
 ```sql
-\dt  -- 查看所有表
-SELECT * FROM news_categories;  -- 应该看到8个分类
+\dt  -- 查看所有表，应该只有 news_articles 一个表
+\d news_articles  -- 查看表结构
+
+-- 查看字段
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_name = 'news_articles';
+
+-- 应该看到：title, title_zh, link, category, summary_zh 等字段
 ```
 
 ---
@@ -147,15 +155,22 @@ docker run -d \
 
 ## 步骤7：配置Gemini API
 
-1. 找到 "Gemini AI分类和翻译" 节点
-2. 这是一个HTTP Request节点
-3. 在URL参数中找到 `key` 参数
-4. 将 `{{ $credentials.apiKey }}` 替换为你的Gemini API Key
+### 重要：正确的节点配置
 
-   或者创建凭证：
-   - 点击 "Credential to connect with"
-   - 选择 "Google PaLM API" 或 "Generic Credential"
-   - 输入你的Gemini API Key
+工作流中使用的是 **Basic LLM Chain** + **Google Gemini Chat Model** 组合：
+
+1. 找到 "Google Gemini Chat Model" 子节点（蓝色图标）
+2. 点击节点
+3. 在右侧面板中找到 "Credential to connect with"
+4. 点击 "Create New Credential"
+5. 选择 **"Google PaLM API"**
+6. 输入你的Gemini API Key
+7. 点击 "Save"
+
+**注意**：
+- 不是HTTP Request节点
+- 凭证类型是 "Google PaLM API"（n8n将Gemini和PaLM归为一类）
+- 模型名称已设置为 `models/gemini-2.5-flash`
 
 ---
 
@@ -164,7 +179,7 @@ docker run -d \
 ### 手动测试
 
 1. 点击工作流右上角的 "Execute Workflow" 按钮
-2. 等待执行完成（可能需要1-2分钟）
+2. 等待执行完成（可能需要1-2分钟，取决于RSS源返回的新闻数量）
 3. 检查每个节点的输出：
    - ✅ 绿色：成功
    - ❌ 红色：失败（查看错误信息）
@@ -174,10 +189,35 @@ docker run -d \
 
 ```sql
 -- 查看保存的新闻
-SELECT id, title, category, summary_zh FROM news_articles LIMIT 5;
+SELECT id, title, title_zh, category, summary_zh
+FROM news_articles
+ORDER BY created_at DESC
+LIMIT 5;
 
--- 应该能看到带中文摘要的新闻数据
+-- 应该能看到：
+-- - title: 英文原标题
+-- - title_zh: 中文翻译标题
+-- - summary_zh: 中文摘要
+-- - category: 中文分类（科技/财经/政治等）
+
+-- 查看所有分类
+SELECT category, COUNT(*) as count
+FROM news_articles
+GROUP BY category;
 ```
+
+### 验证字段
+
+重要：确认数据中**不包含**以下已删除的字段：
+- ❌ `description`（已删除）
+- ❌ `summary`（已删除）
+
+应该包含的字段：
+- ✅ `title`（英文标题）
+- ✅ `title_zh`（中文标题）
+- ✅ `summary_zh`（中文摘要）
+- ✅ `keywords`（关键词）
+- ✅ `source`（来源）
 
 ---
 
@@ -214,7 +254,6 @@ DB_PORT=5432
 DB_USER=postgres
 DB_PASSWORD=your_password
 DB_NAME=news_db
-GEMINI_API_KEY=your_gemini_key
 PORT=3000
 ```
 
@@ -234,14 +273,33 @@ npm start
 # 健康检查
 curl http://localhost:3000/health
 
-# 获取最新新闻
+# 获取最新新闻（注意：现在返回 title_zh 而不是 title）
 curl http://localhost:3000/api/news/latest
 
-# 搜索新闻
-curl "http://localhost:3000/api/news/search?keyword=AI"
+# 响应示例：
+# {
+#   "success": true,
+#   "data": [
+#     {
+#       "id": 1,
+#       "title": "AI Breakthrough in 2025",
+#       "title_zh": "2025年人工智能取得重大突破",
+#       "summary_zh": "人工智能领域在2025年迎来重大突破...",
+#       "category": "科技",
+#       "keywords": "AI,technology,breakthrough",
+#       "source": "BBC News"
+#     }
+#   ]
+# }
 
-# 获取分类
+# 搜索新闻（支持中文标题和摘要搜索）
+curl "http://localhost:3000/api/news/search?keyword=人工智能"
+
+# 获取分类列表
 curl http://localhost:3000/api/categories
+
+# 获取来源列表（新增的API）
+curl http://localhost:3000/api/sources
 ```
 
 ---
@@ -280,8 +338,14 @@ Page({
       },
       success: (res) => {
         if (res.data.success) {
+          const newsList = res.data.data.map(item => ({
+            ...item,
+            // 优先显示中文标题
+            displayTitle: item.title_zh || item.title
+          }));
+
           this.setData({
-            newsList: this.data.newsList.concat(res.data.data),
+            newsList: this.data.newsList.concat(newsList),
             loading: false
           });
         }
@@ -302,7 +366,16 @@ Page({
 
 ### Q1: Gemini API调用失败
 
-**问题**：`Error: Request failed with status code 403`
+**问题**：`Cannot use 'in' operator to search for 'functionCall' in undefined`
+
+**解决方案**：
+1. 确认使用正确的节点类型：
+   - ✅ Basic LLM Chain (root) + Google Gemini Chat Model (sub-node)
+   - ❌ 不要直接使用standalone Gemini节点
+2. 检查凭证类型是 "Google PaLM API"
+3. 检查模型名称：`models/gemini-2.5-flash`
+
+**问题**：`Error: 403 Forbidden`
 
 **解决方案**：
 1. 检查API Key是否正确
@@ -325,7 +398,37 @@ Page({
 2. 检查端口是否正确（默认5432）
 3. 验证用户名和密码
 
-### Q3: RSS源无法访问
+### Q3: 多条新闻变成1条
+
+**问题**：RSS返回33条，但最后只保存了1条
+
+**解决方案**：
+1. 确认使用Merge节点（不是Code节点）
+2. Merge节点配置：
+   - Mode: Combine
+   - Combine By: Combine by Position
+3. 检查连接关系：
+   - "提取新闻字段" 连接到 Merge节点 Input 1
+   - "检查重复新闻" 连接到 Merge节点 Input 2
+
+### Q4: 重复key错误
+
+**问题**：`duplicate key value violates unique constraint`
+
+**解决方案**：
+- 已在"准备INSERT语句"节点中使用 `ON CONFLICT (link) DO NOTHING`
+- 如果仍然出现，检查该节点的SQL语句是否正确
+
+### Q5: ID字段为0
+
+**问题**：数据库中所有新闻的id都是0
+
+**解决方案**：
+1. 不要在INSERT语句中包含id字段
+2. id字段是BIGSERIAL，会自动生成
+3. 检查"准备INSERT语句"节点，确认INSERT字段列表中没有id
+
+### Q6: RSS源无法访问
 
 **问题**：`Error: 404 Not Found`
 
@@ -334,21 +437,49 @@ Page({
 2. 检查网络连接
 3. 配置代理（如果在中国大陆）
 
-### Q4: 工作流执行缓慢
-
-**原因**：Gemini API可能较慢
+### Q7: 翻译质量不佳
 
 **解决方案**：
-1. 减少每次处理的新闻数量
-2. 增加HTTP Request节点的超时时间
-3. 考虑使用其他更快的AI服务
+1. 调整Gemini Chat Model的temperature参数（0.1-0.5）
+2. 优化Basic LLM Chain中的提示词
+3. 增加maxOutputTokens参数（当前1000）
 
-### Q5: 翻译质量不佳
+---
 
-**解决方案**：
-1. 调整Gemini的temperature参数（0.1-0.5）
-2. 优化提示词，提供更多上下文
-3. 增加maxOutputTokens参数
+## 如何添加新的RSS源
+
+**无需修改数据库！** 直接在n8n workflow中操作：
+
+### 方法1：复制现有节点
+
+1. 右键点击"读取RSS新闻源"节点
+2. 选择"Duplicate"
+3. 修改新节点的URL（如改为TechCrunch）
+4. 将新节点连接到"提取新闻字段"
+
+### 方法2：修改source字段
+
+在"格式化数据"Code节点中：
+
+```javascript
+const newsItem = {
+  title: originalData.title || '',
+  title_zh: aiResult.title_zh || '',
+  link: originalData.link || '',
+  pubDate: originalData.pubDate || new Date().toISOString(),
+  category: aiResult.category || '其他',
+  summary_zh: aiResult.summary_zh || '',
+  keywords: Array.isArray(aiResult.keywords) ? aiResult.keywords.join(',') : '',
+  source: 'TechCrunch'  // 修改这里的来源名称
+};
+```
+
+**推荐RSS源**：
+- BBC News: `http://feeds.bbci.co.uk/news/rss.xml`
+- CNN: `http://rss.cnn.com/rss/edition.rss`
+- TechCrunch: `https://techcrunch.com/feed/`
+- The Verge: `https://www.theverge.com/rss/index.xml`
+- Reuters: `https://www.reutersagency.com/feed/`
 
 ---
 
@@ -400,7 +531,6 @@ services:
       - DB_NAME=news_db
       - DB_USER=postgres
       - DB_PASSWORD=${DB_PASSWORD}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - NODE_ENV=production
     depends_on:
       - postgres
@@ -416,7 +546,6 @@ volumes:
 # 创建.env文件
 echo "DB_PASSWORD=your_db_password" > .env
 echo "N8N_PASSWORD=your_n8n_password" >> .env
-echo "GEMINI_API_KEY=your_gemini_key" >> .env
 
 # 启动所有服务
 docker-compose up -d
@@ -432,12 +561,13 @@ docker-compose logs -f
 ✅ **基础配置完成**
 
 现在你可以：
-- [ ] 添加更多RSS源
-- [ ] 自定义分类标准
-- [ ] 调整AI提示词
+- [ ] 添加更多RSS源（复制workflow节点）
+- [ ] 调整AI提示词（在Basic LLM Chain节点中）
+- [ ] 修改分类标准（编辑Gemini提示词）
 - [ ] 配置Nginx反向代理
 - [ ] 设置HTTPS
 - [ ] 部署到云服务器
+- [ ] 定期清理30天前的旧新闻
 
 ---
 
@@ -462,9 +592,23 @@ FROM news_articles
 GROUP BY category
 ORDER BY count DESC;
 
+-- 按来源统计（新增）
+SELECT source, COUNT(*) as count,
+       MAX(created_at) as latest
+FROM news_articles
+WHERE source IS NOT NULL
+GROUP BY source
+ORDER BY count DESC;
+
 -- 今日新增
 SELECT COUNT(*) FROM news_articles
 WHERE DATE(created_at) = CURRENT_DATE;
+
+-- 查看最新10条新闻
+SELECT id, title, title_zh, category, source, created_at
+FROM news_articles
+ORDER BY created_at DESC
+LIMIT 10;
 ```
 
 ---
@@ -472,6 +616,7 @@ WHERE DATE(created_at) = CURRENT_DATE;
 ## 获取帮助
 
 - 查看完整文档：[README.md](./README.md)
+- 故障排查指南：[TROUBLESHOOTING.md](./TROUBLESHOOTING.md)
 - n8n官方文档：https://docs.n8n.io/
 - Google Gemini文档：https://ai.google.dev/docs
 - PostgreSQL文档：https://www.postgresql.org/docs/
@@ -481,3 +626,11 @@ WHERE DATE(created_at) = CURRENT_DATE;
 **恭喜！你已经成功搭建了新闻AI翻译系统！** 🎉
 
 现在微信小程序可以调用API获取翻译后的新闻数据了。
+
+**关键特性**：
+- ✅ 极简数据库（只有1个表）
+- ✅ 中文标题翻译（title_zh）
+- ✅ 中文摘要（summary_zh）
+- ✅ 自动去重（ON CONFLICT）
+- ✅ 灵活的RSS源管理（在workflow中）
+- ✅ 最新的Gemini 2.5 Flash模型
