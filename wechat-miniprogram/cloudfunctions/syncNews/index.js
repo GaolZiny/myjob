@@ -2,6 +2,8 @@
 // 每小时执行一次，从API拉取新数据
 
 const cloud = require('wx-server-sdk');
+const axios = require('axios');
+
 cloud.init({
   env: cloud.DYNAMIC_CURRENT_ENV // 使用当前云环境
 });
@@ -87,7 +89,7 @@ exports.main = async (event, context) => {
               keywords: newsItem.keywords,
               source: newsItem.source,
               image_url: newsItem.image_url,
-              pub_date: db.serverDate({ offset: new Date(newsItem.pub_date).getTime() - Date.now() }),
+              pub_date: new Date(newsItem.pub_date),
               updated_at: db.serverDate()
             }
           });
@@ -107,8 +109,8 @@ exports.main = async (event, context) => {
               keywords: newsItem.keywords,
               source: newsItem.source,
               image_url: newsItem.image_url,
-              pub_date: db.serverDate({ offset: new Date(newsItem.pub_date).getTime() - Date.now() }),
-              created_at: db.serverDate({ offset: new Date(newsItem.created_at).getTime() - Date.now() }),
+              pub_date: new Date(newsItem.pub_date),
+              created_at: new Date(newsItem.created_at),
               updated_at: db.serverDate()
             }
           });
@@ -145,22 +147,22 @@ async function fetchNewsFromAPI(page = 1, pageSize = 100) {
     const url = `${API_BASE_URL}/api/news/latest?page=${page}&pageSize=${pageSize}`;
     console.log('请求API:', url);
 
-    // 使用云函数的HTTP请求能力
-    const result = await cloud.cloud.HTTPClient.request({
-      url: url,
-      method: 'GET',
+    // 使用 axios 发送 HTTP 请求
+    const response = await axios.get(url, {
       timeout: 10000,
-      dataType: 'json'
+      headers: {
+        'Content-Type': 'application/json'
+      }
     });
 
-    if (result.status === 200 && result.data.success) {
-      return result.data.data;
+    if (response.status === 200 && response.data.success) {
+      return response.data.data;
     } else {
-      console.error('API返回错误:', result.status, result.data);
+      console.error('API返回错误:', response.status, response.data);
       return [];
     }
   } catch (error) {
-    console.error('请求API失败:', error);
+    console.error('请求API失败:', error.message);
     throw error;
   }
 }
