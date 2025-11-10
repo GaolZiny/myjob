@@ -108,7 +108,7 @@ exports.main = async (event, context) => {
               source: newsItem.source,
               image_url: newsItem.image_url,
               pub_date: new Date(newsItem.pub_date),
-              created_at: db.serverDate(),
+              created_at: new Date(newsItem.created_at),
               updated_at: db.serverDate()
             }
           });
