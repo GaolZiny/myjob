@@ -87,7 +87,7 @@ exports.main = async (event, context) => {
               keywords: newsItem.keywords,
               source: newsItem.source,
               image_url: newsItem.image_url,
-              pub_date: db.serverDate({ offset: new Date(newsItem.pub_date).getTime() - Date.now() }),
+              pub_date: new Date(newsItem.pub_date),
               updated_at: db.serverDate()
             }
           });
@@ -107,8 +107,8 @@ exports.main = async (event, context) => {
               keywords: newsItem.keywords,
               source: newsItem.source,
               image_url: newsItem.image_url,
-              pub_date: db.serverDate({ offset: new Date(newsItem.pub_date).getTime() - Date.now() }),
-              created_at: db.serverDate({ offset: new Date(newsItem.created_at).getTime() - Date.now() }),
+              pub_date: new Date(newsItem.pub_date),
+              created_at: db.serverDate(),
               updated_at: db.serverDate()
             }
           });
