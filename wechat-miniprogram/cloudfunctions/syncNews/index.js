@@ -67,10 +67,10 @@ exports.main = async (event, context) => {
     // 4. 批量保存到云数据库（避免重复）
     for (const newsItem of newItems) {
       try {
-        // 检查是否已存在（通过link唯一标识）
+        // 检查是否已存在（通过article_link唯一标识）
         const existing = await db.collection('news')
           .where({
-            link: newsItem.link
+            article_link: newsItem.article_link
           })
           .get();
 
@@ -80,6 +80,8 @@ exports.main = async (event, context) => {
             data: {
               title: newsItem.title,
               title_zh: newsItem.title_zh,
+              link: newsItem.link,
+              article_link: newsItem.article_link,
               summary_zh: newsItem.summary_zh,
               category: newsItem.category,
               keywords: newsItem.keywords,
@@ -99,6 +101,7 @@ exports.main = async (event, context) => {
               title: newsItem.title,
               title_zh: newsItem.title_zh,
               link: newsItem.link,
+              article_link: newsItem.article_link,
               summary_zh: newsItem.summary_zh,
               category: newsItem.category,
               keywords: newsItem.keywords,

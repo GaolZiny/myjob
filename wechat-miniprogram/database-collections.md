@@ -12,7 +12,8 @@
 | id | Number | 否 | API返回的新闻ID | - |
 | title | String | 是 | 英文原标题 | - |
 | title_zh | String | 是 | 中文翻译标题 | 全文索引 |
-| link | String | 是 | 新闻链接（唯一） | **唯一索引** |
+| link | String | 是 | RSS源链接 | - |
+| article_link | String | 是 | 实际文章链接（唯一） | **唯一索引** |
 | summary_zh | String | 否 | 中文摘要 | - |
 | category | String | 是 | 分类（科技/财经/政治/体育/娱乐/健康/社会/其他） | **普通索引** |
 | keywords | String | 否 | 关键词（逗号分隔） | - |
@@ -26,8 +27,8 @@
 
 在微信云开发控制台 → 云数据库 → news集合 → 索引管理中创建以下索引：
 
-#### 1. link（唯一索引）
-- **字段**：link
+#### 1. article_link（唯一索引）
+- **字段**：article_link
 - **类型**：唯一索引
 - **升序/降序**：升序
 - **作用**：防止重复新闻，加快去重查询
@@ -79,7 +80,8 @@
   "id": 123,
   "title": "AI Breakthrough in 2025",
   "title_zh": "2025年人工智能取得重大突破",
-  "link": "https://www.bbc.com/news/articles/xyz123",
+  "link": "http://feeds.bbci.co.uk/news/rss.xml?id=xyz123",
+  "article_link": "https://www.bbc.com/news/articles/xyz123",
   "summary_zh": "人工智能在2025年取得了重大突破，新的算法使得机器学习效率提升了10倍...",
   "category": "科技",
   "keywords": "AI,technology,breakthrough",
