@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "openapi": [
+      "wxacode.get",
+      "wxacode.getUnlimited"
+    ]
+  },
+  "triggers": [
+    {
+      "name": "hourlySync",
+      "type": "timer",
+      "config": "0 0 * * * * *"
+    }
+  ]
+}
