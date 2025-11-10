@@ -67,10 +67,10 @@ exports.main = async (event, context) => {
     // 4. 批量保存到云数据库（避免重复）
     for (const newsItem of newItems) {
       try {
-        // 检查是否已存在（通过article_link唯一标识）
+        // 检查是否已存在（通过link唯一标识）
         const existing = await db.collection('news')
           .where({
-            article_link: newsItem.article_link
+            link: newsItem.link
           })
           .get();
 

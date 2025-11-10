@@ -91,23 +91,21 @@ return {
 - `article_link`：使用重定向后的最终 URL
 - 如果没有重定向，`article_link` 将等于 `link`
 
-### 步骤 4：更新"检查重复新闻"节点
+### 步骤 4：保持"检查重复新闻"节点不变
 
-修改 SQL 查询，使用 `article_link` 而不是 `link` 来检查重复：
+**重要**：去重检查仍然使用 `link` 字段，不需要修改！
 
-**原查询**：
+查询保持不变：
 ```sql
 SELECT CAST(COUNT(*) as integer) as count
 FROM news_articles
 WHERE link = '{{ $json.link }}'
 ```
 
-**新查询**：
-```sql
-SELECT CAST(COUNT(*) as integer) as count
-FROM news_articles
-WHERE article_link = '{{ $json.article_link }}'
-```
+**说明**：
+- `link` 是 RSS 源链接，是新闻的主要唯一标识
+- 用 `link` 来判断是否已经抓取过这条新闻
+- `article_link` 只是额外的信息字段，不用于去重判断
 
 ### 步骤 5：更新"准备INSERT语句"节点
 
@@ -155,11 +153,11 @@ const sql = `
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
   )
-  ON CONFLICT (article_link) DO NOTHING
+  ON CONFLICT (link) DO NOTHING
 `;
 ```
 
-注意：将 `ON CONFLICT (link)` 改为 `ON CONFLICT (article_link)`
+**重要**：保持使用 `ON CONFLICT (link)`，因为去重基于 `link` 字段！
 
 ### 步骤 6：连接节点
 
