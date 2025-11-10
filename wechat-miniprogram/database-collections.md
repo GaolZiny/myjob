@@ -20,8 +20,7 @@
 | source | String | 否 | 来源（如BBC News） | **普通索引** |
 | image_url | String | 否 | 图片URL | - |
 | pub_date | Date | 否 | 原始发布时间 | **普通索引** |
-| created_at | Date | 是 | 创建时间（同步到云数据库的时间） | **普通索引** |
-| updated_at | Date | 是 | 更新时间 | - |
+| created_at | Date | 是 | 创建时间（API返回的创建时间戳） | **普通索引** |
 
 ### 索引设置（重要！）
 
@@ -88,8 +87,7 @@
   "source": "BBC News",
   "image_url": "https://example.com/image.jpg",
   "pub_date": "2025-11-10T10:00:00.000Z",
-  "created_at": "2025-11-10T11:05:00.000Z",
-  "updated_at": "2025-11-10T11:05:00.000Z"
+  "created_at": "2025-11-10T11:05:00.000Z"
 }
 ```
 
