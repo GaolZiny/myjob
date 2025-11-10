@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS news_articles (
     title VARCHAR(500) NOT NULL,
     title_zh VARCHAR(500),  -- 中文翻译标题
     link VARCHAR(1000) NOT NULL UNIQUE,
+    article_link VARCHAR(1000) NOT NULL UNIQUE,  -- 文章链接（唯一）
     pub_date TIMESTAMP,
 
     -- AI处理结果
