@@ -33,8 +33,8 @@ class NewsAPI {
 
         let sql = `
             SELECT
-                id, title, title_zh, summary_zh, category, link, image_url,
-                pub_date, created_at
+                id, title, title_zh, summary_zh, category, link, article_link,
+                image_url, pub_date, source, keywords, created_at, updated_at
             FROM news_articles
             WHERE 1=1
         `;
@@ -86,8 +86,8 @@ class NewsAPI {
 
         const sql = `
             SELECT
-                id, title, title_zh, summary_zh, category, link, image_url,
-                pub_date, created_at
+                id, title, title_zh, summary_zh, category, link, article_link,
+                image_url, pub_date, source, keywords, created_at, updated_at
             FROM news_articles
             WHERE to_tsvector('simple', title || ' ' || coalesce(title_zh, '') || ' ' || coalesce(summary_zh, '')) @@ to_tsquery('simple', $1)
                OR keywords ILIKE $2
@@ -131,8 +131,8 @@ class NewsAPI {
     static async getNewsDetail(id) {
         const sql = `
             SELECT
-                id, title, title_zh, summary_zh, category, link, image_url,
-                keywords, source,
+                id, title, title_zh, summary_zh, category, link, article_link,
+                image_url, keywords, source,
                 pub_date, created_at, updated_at
             FROM news_articles
             WHERE id = $1
