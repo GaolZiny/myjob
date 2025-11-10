@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS news_articles (
     title VARCHAR(500) NOT NULL,
     title_zh VARCHAR(500),  -- 中文翻译标题
     link VARCHAR(1000) NOT NULL UNIQUE,
-    article_link VARCHAR(1000) NOT NULL UNIQUE,  -- 文章链接（唯一）
+    article_link VARCHAR(1000) NOT NULL UNIQUE, 
     pub_date TIMESTAMP,
 
     -- AI处理结果
@@ -58,6 +58,7 @@ COMMENT ON TABLE news_articles IS '新闻文章主表 - 唯一的数据表';
 COMMENT ON COLUMN news_articles.title IS '新闻标题（英文原文）';
 COMMENT ON COLUMN news_articles.title_zh IS 'AI翻译的中文标题';
 COMMENT ON COLUMN news_articles.link IS '新闻链接（唯一约束）';
+COMMENT ON COLUMN news_articles.article_link IS '新闻实际文章链接';
 COMMENT ON COLUMN news_articles.pub_date IS '新闻发布时间';
 COMMENT ON COLUMN news_articles.category IS 'AI分类：科技/财经/政治/体育/娱乐/健康/社会/其他';
 COMMENT ON COLUMN news_articles.summary_zh IS 'AI生成的中文摘要';
