@@ -28,7 +28,7 @@ exports.main = async (event, context) => {
     stats: {
       total: 0,
       new: 0,
-      updated: 0,
+      existed: 0,
       failed: 0
     }
   };
@@ -77,24 +77,9 @@ exports.main = async (event, context) => {
           .get();
 
         if (existing.data.length > 0) {
-          // 更新已有数据
-          await db.collection('news').doc(existing.data[0]._id).update({
-            data: {
-              title: newsItem.title,
-              title_zh: newsItem.title_zh,
-              link: newsItem.link,
-              article_link: newsItem.article_link,
-              summary_zh: newsItem.summary_zh,
-              category: newsItem.category,
-              keywords: newsItem.keywords,
-              source: newsItem.source,
-              image_url: newsItem.image_url,
-              pub_date: new Date(newsItem.pub_date),
-              updated_at: db.serverDate()
-            }
-          });
-          result.stats.updated++;
-          console.log(`更新新闻: ${newsItem.title_zh}`);
+          // 已存在，跳过不处理
+          result.stats.existed++;
+          console.log(`跳过已存在新闻: ${newsItem.title_zh}`);
         } else {
           // 新增数据
           await db.collection('news').add({
@@ -111,7 +96,7 @@ exports.main = async (event, context) => {
               image_url: newsItem.image_url,
               pub_date: new Date(newsItem.pub_date),
               created_at: new Date(newsItem.created_at),
-              updated_at: db.serverDate()
+              updated_at: db.serverDate()  // 同步到云数据库的时间
             }
           });
           result.stats.new++;
@@ -126,7 +111,7 @@ exports.main = async (event, context) => {
     // 5. 返回同步结果
     const duration = Date.now() - startTime;
     result.success = true;
-    result.message = `同步成功！新增 ${result.stats.new} 条，更新 ${result.stats.updated} 条，失败 ${result.stats.failed} 条，耗时 ${duration}ms`;
+    result.message = `同步成功！新增 ${result.stats.new} 条，已存在 ${result.stats.existed} 条，失败 ${result.stats.failed} 条，耗时 ${duration}ms`;
 
     console.log(result.message);
     return result;
