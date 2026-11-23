@@ -27,8 +27,17 @@ jobs:
           curl -sL https://raw.githubusercontent.com/Kimentanm/aptv/refs/heads/master/m3u/iptv.m3u -o iptv.m3u
           tail -n +6 iptv.m3u >> generated_ipv6.m3u
 
+      - name: Drop IPv6 entries (ISP in Japan has no IPv6)
+        run: |
+          # 每个频道 = 若干 # 开头的行 + 一行地址；地址以 scheme://[ 开头的是 IPv6，整条丢弃
+          awk '/^#EXTM3U/{print;next}
+               /^#/{buf=buf $0 "\n"; next}
+               /^[[:space:]]*$/{next}
+               { if ($0 !~ /^[a-zA-Z]+:\/\/\[/) printf "%s%s\n", buf, $0; buf="" }' \
+            generated_ipv6.m3u > filtered.m3u
+
           mkdir -p generated
-          mv generated_ipv6.m3u generated/ipv6_custom.m3u
+          mv filtered.m3u generated/ipv6_custom.m3u
 
       - name: Commit and Push if changed
         run: |
