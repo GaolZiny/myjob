@@ -39,7 +39,7 @@ jobs:
       - name: Drop dead channels (liveness check)
         run: |
           python3 - filtered.m3u checked.m3u <<'PY'
-          import sys, urllib.request, concurrent.futures as cf
+          import sys, urllib.request, urllib.parse, concurrent.futures as cf
 
           src, dst = sys.argv[1], sys.argv[2]
           header, entries, buf = None, [], []
@@ -56,6 +56,8 @@ jobs:
           def alive(url):
               # 能用 = 200 且内容像播放列表 / 视频流；超时 10 秒
               try:
+                  # 地址里有中文等非 ASCII 字符时先转码（播放器也会这样做），已转码的 %xx 不动
+                  url = urllib.parse.quote(url, safe=":/?#[]@!$&'()*+,;=%~")
                   req = urllib.request.Request(url, headers={"User-Agent": "AppleCoreMedia/1.0.0 (Apple TV; tvOS 18)"})
                   with urllib.request.urlopen(req, timeout=10) as r:
                       if r.status != 200:
@@ -79,9 +81,10 @@ jobs:
           for e, why in dead:
               print(f"  DEAD  {name(e)}  {e[1][:90]}  ({why})")
 
-          # 保险：失效超过 60% 多半是检测这边的网络问题，保留原列表不删
-          if entries and len(dead) / len(entries) > 0.6:
-              print("::warning::more than 60% dead, keeping the unfiltered list")
+          # 保险：失效超过 90% 多半是检测这边的网络问题，保留原列表不删
+          # （2026-11-24 从日本实测本来就有约 62% 失效，所以不能设 60%）
+          if entries and len(dead) / len(entries) > 0.9:
+              print("::warning::more than 90% dead, keeping the unfiltered list")
               keep = entries
           else:
               keep = [e for e, (ok, _) in zip(entries, results) if ok]
